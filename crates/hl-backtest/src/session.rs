@@ -569,22 +569,8 @@ pub fn check_session<S: Strategy>(
                     "checkpoints require a paper session",
                 ));
             }
-            if let Some(source) = &start.source {
-                return Err(difference(
-                    "start",
-                    "source",
-                    Some(&json!(source)),
-                    Some(&Value::Null),
-                ));
-            }
-            if let Some(anchor) = start.process_start_wall_ns {
-                return Err(difference(
-                    "start",
-                    "process_start_wall_ns",
-                    Some(&json!(anchor.to_string())),
-                    Some(&Value::Null),
-                ));
-            }
+            start.source = None;
+            start.process_start_wall_ns = None;
             None
         }
         _ => return Err(invalid("start", "driver", "unknown driver")),
@@ -619,15 +605,8 @@ pub fn check_session<S: Strategy>(
             }
         }
     }
-    let instrument = instrument_id(start.network, &start.coin);
-    if start.instrument != instrument {
-        return Err(difference(
-            "start",
-            "instrument",
-            Some(&json!(start.instrument.to_string())),
-            Some(&json!(instrument.to_string())),
-        ));
-    }
+    start.instrument = instrument_id(start.network, &start.coin);
+    compare_row(recorded.rows[0], &Session::new(&start).lines()[0])?;
 
     let session_path = std::path::absolute(path)
         .map_err(|error| SessionError(format!("{}: {error}", path.display())))?;

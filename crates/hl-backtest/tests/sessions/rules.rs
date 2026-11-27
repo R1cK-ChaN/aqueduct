@@ -239,3 +239,27 @@ fn coverage_starting_after_the_first_effect_time_fails_the_check() {
     let stderr = String::from_utf8(output.stderr).expect("UTF-8 checker diagnostics");
     assert!(stderr.contains(message), "{stderr}");
 }
+
+#[test]
+fn start_encoding_is_checked_before_raw_file_hashes() {
+    let fixture = Fixture::new();
+    let sessions = [
+        (1, fixture.expected(), build()),
+        (2, dated_session(&fixture), build_identity()),
+    ];
+    fs::write(&fixture.files[0], b"damaged recording").expect("damage the first raw file");
+
+    for (version, mut text, identity) in sessions {
+        text.insert(1, ' ');
+        let path = fixture.session("spacing.jsonl", &text);
+        let error = check_session::<FixtureStrategy>(&path, &identity, |_, _| {
+            panic!("the invalid start must fail before the factory")
+        })
+        .expect_err("start spacing must be checked before the damaged raw file")
+        .to_string();
+        assert!(
+            error.starts_with("start encoding differs:"),
+            "version {version}: {error}"
+        );
+    }
+}
