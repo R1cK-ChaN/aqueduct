@@ -17,8 +17,8 @@ use hl_backtest::recording::{Recording, read_recordings};
 use hl_backtest::session::{ReplayComponents, check_session};
 use hl_backtest::{build_identity, replay_session};
 use hl_codec::hyperliquid::{Network, instrument_id};
-use hl_run::replay;
 use hl_run::session::SessionStart;
+use hl_run::{load_rules_file, replay};
 use hl_sim::{MODEL_NAME, SimConfig, SimGateway};
 use hl_strategy::{FixedSpreadConfig, FixedSpreadQuoter, StrategyHost};
 use hl_types::{MarketEventKind, Px, Qty};
@@ -28,7 +28,8 @@ use summary::JsonObject;
 const USAGE: &str = "\
 usage: hl-backtest run --coin <coin> --half-spread <price> --qty <size>
            --order-latency-ms <n> --report-latency-ms <n> --maker-fee-bps <rate>
-           [--network mainnet|testnet] [--min-notional <usd>] [--session-out <path>] <file>...
+           [--network mainnet|testnet] [--min-notional <usd>]
+           [--rules-file <path>] [--session-out <path>] <file>...
        hl-backtest run --check-session <session.jsonl>";
 
 const STRATEGY_NAME: &str = "fixed_spread";
@@ -39,6 +40,7 @@ struct Command<'a> {
     network: Network,
     files: Vec<PathBuf>,
     session_out: Option<PathBuf>,
+    rules_file: Option<PathBuf>,
     strategy: FixedSpreadConfig,
     sim: SimConfig,
     // Preserve the supplied decimal spellings in the JSON summary.
@@ -60,19 +62,25 @@ fn parse(args: &[OsString]) -> Result<Command<'_>, String> {
     let mut flags = BTreeMap::new();
     let mut files = Vec::new();
     let mut session_out = None;
+    let mut rules_file = None;
     while let Some(arg) = args.next() {
         let Some(flag) = arg.to_str().filter(|word| word.starts_with('-')) else {
             files.push(PathBuf::from(arg));
             continue;
         };
         match flag {
-            "--session-out" => {
+            "--session-out" | "--rules-file" => {
                 let path = args
                     .next()
                     .filter(|p| !p.is_empty() && !p.as_encoded_bytes().starts_with(b"--"))
-                    .ok_or("missing value for --session-out")?;
-                if session_out.replace(PathBuf::from(path)).is_some() {
-                    return Err("duplicate option --session-out".into());
+                    .ok_or_else(|| format!("missing value for {flag}"))?;
+                let option = if flag == "--rules-file" {
+                    &mut rules_file
+                } else {
+                    &mut session_out
+                };
+                if option.replace(PathBuf::from(path)).is_some() {
+                    return Err(format!("duplicate option {flag}"));
                 }
                 continue;
             }
@@ -158,6 +166,7 @@ fn parse(args: &[OsString]) -> Result<Command<'_>, String> {
         network,
         files,
         session_out,
+        rules_file,
         strategy,
         sim,
         summary,
@@ -222,6 +231,20 @@ fn run(mut command: Command<'_>) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(path) = &command.session_out {
         output::require_unused(path)?;
     }
+    let (mut sim, rules) = match &command.rules_file {
+        Some(path) => {
+            let selected = load_rules_file(path, command.network, command.coin)?;
+            command.summary.append_rules(&selected.versions);
+            (
+                SimGateway::with_rules(command.sim, selected.book),
+                selected.versions,
+            )
+        }
+        None => {
+            eprintln!("hl-backtest: no grid check applied");
+            (SimGateway::new(command.sim), Vec::new())
+        }
+    };
     let recording = read_recordings(&command.files, command.network, command.coin)?;
     let read_decode_ms = start.elapsed().as_millis();
     if recording.stats.bbo == 0 {
@@ -229,7 +252,6 @@ fn run(mut command: Command<'_>) -> Result<(), Box<dyn std::error::Error>> {
     }
     validate_ranges(&recording, command.strategy, command.sim)?;
     let mut host = StrategyHost::new(FixedSpreadQuoter::new(command.strategy), STRATEGY_TAG);
-    let mut sim = SimGateway::new(command.sim);
     let start = Instant::now();
     let stop = recording
         .stop_time
@@ -250,14 +272,15 @@ fn run(mut command: Command<'_>) -> Result<(), Box<dyn std::error::Error>> {
             strategy: command.strategy.parameters(),
             sim_model: MODEL_NAME.into(),
             sim: command.sim.parameters(),
-            rules: Vec::new(),
+            rules,
         };
         let manifest = output::manifest(&recording, path)?;
         let (session, trace, pnl) =
             replay_session(&recording, &start, manifest, &mut host, &mut sim)?;
         (trace, pnl, Some((path, session)))
     } else {
-        let trace = replay(&mut host, &mut sim, &recording.events, stop)?;
+        let trace = replay(&mut host, &mut sim, &recording.events, stop)
+            .map_err(|error| error.for_pair(command.network, command.coin))?;
         let pnl = hl_run::pnl::summarize(
             command.strategy.instrument,
             &recording.events,

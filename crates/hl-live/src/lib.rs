@@ -73,6 +73,16 @@ fn run_paper_with_clock(
     clock: PaperClock,
     #[cfg(test)] inspect_trace: impl FnOnce(&hl_run::ReplayTrace),
 ) -> io::Result<PathBuf> {
+    let (rules, mut gateway) = match config.load_rules().map_err(io::Error::other)? {
+        Some(selected) => (
+            selected.versions,
+            SimGateway::with_rules(config.sim, selected.book),
+        ),
+        None => {
+            eprintln!("hl-live: no grid check applied");
+            (Vec::new(), SimGateway::new(config.sim))
+        }
+    };
     let anchor = clock.start_wall_ns();
     let directory = create_directory(&config.out_dir, anchor)?;
     let start = SessionStart {
@@ -89,7 +99,7 @@ fn run_paper_with_clock(
         strategy: config.strategy.parameters(),
         sim_model: MODEL_NAME.into(),
         sim: config.sim.parameters(),
-        rules: Vec::new(),
+        rules,
     };
     let mut capture = Capture::new(&directory, &config.source, config.zstd_level, &start)?;
     let mut session = Session::new(&start);
@@ -113,7 +123,6 @@ fn run_paper_with_clock(
             observation: &observation,
         };
         let mut host = StrategyHost::new(observed, start.strategy_tag);
-        let mut gateway = SimGateway::new(config.sim);
         let mut driver = IncrementalDriver::for_paper(&mut host, &mut gateway, &mut session);
         drive(
             config,
@@ -167,7 +176,9 @@ fn drive<S: hl_strategy::Strategy>(
                 capture.capture_due_checkpoints(driver, event.ts_local)?;
                 driver
                     .on_market_event_with_origin(event, &origin)
-                    .map_err(io::Error::other)?;
+                    .map_err(|error| {
+                        io::Error::other(error.for_pair(config.network, &config.coin))
+                    })?;
                 capture.append(driver.take_session_lines())?;
                 maintain(capture, clock, &mut last_tick)?;
             }

@@ -14,14 +14,19 @@ use tungstenite::{Message, WebSocket};
 
 static CHECKER: OnceLock<PathBuf> = OnceLock::new();
 pub const TIMEOUT: Duration = Duration::from_secs(15);
+pub const SYNTH_RULES: &str = include_str!("../../../hl-backtest/tests/fixtures/synth-rules.json");
 
 pub fn config_text(out_dir: &Path, port: u16) -> String {
+    config_text_for_coin(out_dir, port, "BTC")
+}
+
+pub fn config_text_for_coin(out_dir: &Path, port: u16, coin: &str) -> String {
     format!(
         r#"out_dir = {:?}
 queue_capacity = 1024
 zstd_level = 1
 network = "testnet"
-coin = "BTC"
+coin = "{coin}"
 strategy_name = "fixed_spread"
 
 [source]
@@ -29,7 +34,7 @@ name = "loopback"
 url = "ws://127.0.0.1:{port}/ws"
 stale_after_ms = 60000
 subscribe_pace_ms = 0
-subscribe_once = ['{{"method":"subscribe","subscription":{{"type":"bbo","coin":"BTC"}}}}', '{{"method":"subscribe","subscription":{{"type":"trades","coin":"BTC"}}}}']
+subscribe_once = ['{{"method":"subscribe","subscription":{{"type":"bbo","coin":"{coin}"}}}}', '{{"method":"subscribe","subscription":{{"type":"trades","coin":"{coin}"}}}}']
 
 [strategy]
 half_spread_quote_per_base = "1"
@@ -54,6 +59,10 @@ pub fn listener() -> TcpListener {
 }
 
 pub fn connect(listener: &TcpListener) -> WebSocket<TcpStream> {
+    connect_for_coin(listener, "BTC")
+}
+
+pub fn connect_for_coin(listener: &TcpListener, coin: &str) -> WebSocket<TcpStream> {
     let deadline = Instant::now() + TIMEOUT;
     let stream = loop {
         match listener.accept() {
@@ -81,16 +90,26 @@ pub fn connect(listener: &TcpListener) -> WebSocket<TcpStream> {
             serde_json::from_str(message.to_text().expect("text subscription"))
                 .expect("JSON subscription");
         assert_eq!(subscription["subscription"]["type"], channel);
-        assert_eq!(subscription["subscription"]["coin"], "BTC");
+        assert_eq!(subscription["subscription"]["coin"], coin);
     }
     socket
 }
 
 pub fn bbo(socket: &mut WebSocket<TcpStream>, time: u64, bid: &str, ask: &str) {
+    bbo_for_coin(socket, "BTC", time, bid, ask);
+}
+
+pub fn bbo_for_coin(
+    socket: &mut WebSocket<TcpStream>,
+    coin: &str,
+    time: u64,
+    bid: &str,
+    ask: &str,
+) {
     socket
         .send(Message::text(
             json!({"channel":"bbo","data":{
-                "coin":"BTC","time":time,
+                "coin":coin,"time":time,
                 "bbo":[{"px":bid,"sz":"10","n":1},{"px":ask,"sz":"10","n":1}]
             }})
             .to_string(),
@@ -99,10 +118,20 @@ pub fn bbo(socket: &mut WebSocket<TcpStream>, time: u64, bid: &str, ask: &str) {
 }
 
 pub fn trade(socket: &mut WebSocket<TcpStream>, time: u64, id: u64, quantity: &str) {
+    trade_for_coin(socket, "BTC", time, id, quantity);
+}
+
+pub fn trade_for_coin(
+    socket: &mut WebSocket<TcpStream>,
+    coin: &str,
+    time: u64,
+    id: u64,
+    quantity: &str,
+) {
     socket
         .send(Message::text(
             json!({"channel":"trades","data":[{
-                "coin":"BTC","side":"A","px":"98","sz":quantity,
+                "coin":coin,"side":"A","px":"98","sz":quantity,
                 "time":time,"tid":id,
                 "hash":"0x0000000000000000000000000000000000000000000000000000000000000000",
                 "users":["0x1111111111111111111111111111111111111111","0x2222222222222222222222222222222222222222"]

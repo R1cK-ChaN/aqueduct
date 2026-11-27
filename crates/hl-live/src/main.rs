@@ -1,6 +1,6 @@
 //! Command line for one paper session.
 
-use std::fs;
+use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -16,8 +16,9 @@ fn main() -> ExitCode {
         return usage();
     }
     let run = || -> Result<(), Box<dyn std::error::Error>> {
-        let config = PaperConfig::from_toml(&fs::read_to_string(path)?)?;
+        let config = PaperConfig::from_file(Path::new(path))?;
         if command == "check" {
+            config.load_rules()?;
             println!("paper config OK");
             return Ok(());
         }

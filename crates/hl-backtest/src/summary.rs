@@ -3,7 +3,9 @@ use std::fmt;
 use std::time::Duration;
 
 use hl_backtest::recording::Recording;
+use hl_rules::RuleVersion;
 use hl_run::ReplayTrace;
+use hl_run::session::rules_json;
 use hl_types::{OrderAction, OrderEventKind, Qty, RejectReason, Side};
 use serde_json::{Value, json};
 
@@ -23,6 +25,10 @@ impl JsonObject {
 
     fn append(&mut self, name: &'static str, value: Value) {
         self.members.push((name, value.to_string()));
+    }
+
+    pub(super) fn append_rules(&mut self, versions: &[RuleVersion]) {
+        self.members.push(("rules", rules_json(versions)));
     }
 
     pub(super) fn append_object(&mut self, name: &'static str, value: Self) {

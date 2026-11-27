@@ -172,7 +172,7 @@ impl Session {
         }
         row.object("sim", sim);
         if !start.rules.is_empty() {
-            row.objects("rules", start.rules.iter().map(rule_version));
+            row.encoded("rules", &rules_json(&start.rules));
         }
         Self {
             lines: vec![row.line()],
@@ -386,6 +386,11 @@ fn raw_position(position: RawPosition) -> Object {
     object
 }
 
+/// Encodes the ordered rule versions for both the session start and the backtest summary.
+pub fn rules_json(versions: &[RuleVersion]) -> String {
+    object_array(versions.iter().map(rule_version))
+}
+
 fn rule_version(version: &RuleVersion) -> Object {
     let mut object = Object::new();
     object.field(
@@ -465,8 +470,7 @@ impl Object {
     }
 
     fn objects(&mut self, name: &str, values: impl Iterator<Item = Object>) {
-        let entries = values.map(Object::finish).collect::<Vec<_>>().join(",");
-        self.encoded(name, &format!("[{entries}]"));
+        self.encoded(name, &object_array(values));
     }
 
     fn encoded(&mut self, name: &str, value: &str) {
@@ -488,6 +492,11 @@ impl Object {
         line.push('\n');
         line
     }
+}
+
+fn object_array(values: impl Iterator<Item = Object>) -> String {
+    let entries = values.map(Object::finish).collect::<Vec<_>>().join(",");
+    format!("[{entries}]")
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@
 
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -16,6 +16,8 @@ use hl_codec::rawlog::{Record, RecordKind};
 use hl_recorder::open_recording;
 use serde_json::Value;
 
+#[path = "paper_process/rules.rs"]
+mod rules;
 mod support;
 use support::{
     TIMEOUT, bbo, check_session, config_text, connect, count, listener, read_rows, trade,
@@ -53,10 +55,14 @@ impl Fixture {
 
     fn start(&self, port: u16, run: usize) -> PaperProcess {
         let config = self.directory.join(format!("paper-{run}.toml"));
-        let log = self.directory.join(format!("paper-{run}.log"));
         fs::write(&config, config_text(&self.out_dir(), port)).expect("write loopback config");
+        self.command("paper", &config)
+    }
+
+    fn command(&self, command: &str, config: &Path) -> PaperProcess {
+        let log = config.with_extension("log");
         let child = Command::new(env!("CARGO_BIN_EXE_hl-live"))
-            .args(["paper", "--config"])
+            .args([command, "--config"])
             .arg(config)
             .stdout(Stdio::null())
             .stderr(File::create(&log).expect("create process log"))
@@ -157,6 +163,15 @@ impl PaperProcess {
                 .expect("send requested stop signal")
                 .success()
         );
+        let status = self.wait_for_exit();
+        assert!(status.success(), "paper failed: {}", self.log_text());
+        assert!(!partial.exists(), "clean stop seals the partial session");
+        let session = partial.with_file_name("session.jsonl");
+        assert!(session.is_file(), "clean stop writes session.jsonl");
+        session
+    }
+
+    fn wait_for_exit(&mut self) -> ExitStatus {
         let deadline = Instant::now() + TIMEOUT;
         loop {
             if let Some(status) = self
@@ -166,17 +181,12 @@ impl PaperProcess {
                 .try_wait()
                 .expect("poll stopping child")
             {
-                assert!(status.success(), "paper failed: {}", self.log_text());
                 self.child.take();
-                break;
+                return status;
             }
             assert!(Instant::now() < deadline, "paper did not stop");
             thread::sleep(Duration::from_millis(5));
         }
-        assert!(!partial.exists(), "clean stop seals the partial session");
-        let session = partial.with_file_name("session.jsonl");
-        assert!(session.is_file(), "clean stop writes session.jsonl");
-        session
     }
 }
 
@@ -317,8 +327,19 @@ fn end_to_end_places_accepts_fills_modifies_and_checks_after_sigint() {
     bbo(&mut socket, after_last_callback(&modified), "99", "103");
     paper.wait_rows(|rows| count(rows, "report", "modified") == 2);
 
+    let log = paper.log.clone();
     let path = paper.stop("INT");
     let (rows, _) = complete_session(&path);
+    let stderr = fs::read_to_string(log).expect("read paper diagnostics");
+    assert_eq!(
+        stderr
+            .lines()
+            .filter(|&line| line == "hl-live: no grid check applied")
+            .count(),
+        1
+    );
+    assert_eq!(rows[0]["schema_version"], 1);
+    assert!(rows[0].get("rules").is_none());
     let end = rows.last().expect("end");
     assert_eq!(end["pnl"]["position"], "0.5");
     assert_eq!(end["pnl"]["fees"], "0.007425");

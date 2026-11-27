@@ -24,7 +24,9 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::fmt;
+use std::path::Path;
 
+use hl_codec::hyperliquid::{Network, SelectedRules, parse_rules_file};
 use hl_gateway::OrderGateway;
 use hl_sim::{LatePrintMisses, SimError, SimGateway};
 use hl_strategy::{Strategy, StrategyHost};
@@ -39,6 +41,15 @@ use session::{CheckpointBoundary, Session};
 pub mod pnl;
 pub mod recording;
 pub mod session;
+
+/// Reads a local rules file at startup and selects the run's exact network and coin.
+pub fn load_rules_file(path: &Path, network: Network, coin: &str) -> Result<SelectedRules, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| format!("rules file {}: {error}", path.display()))?;
+    parse_rules_file(&text)
+        .and_then(|file| file.select(network, coin))
+        .map_err(|error| format!("rules file {}: {error}", path.display()))
+}
 
 /// Why the driver could not process an input or close a timestamp. `index`
 /// is the zero-based position of the offending market or gap event.
@@ -77,6 +88,16 @@ pub enum ReplayError {
     },
     /// The simulator could not select rules for an action at its effect time.
     Sim(SimError),
+}
+
+impl ReplayError {
+    /// Includes the driver's network and coin when reporting a simulator coverage error.
+    pub fn for_pair(&self, network: Network, coin: &str) -> String {
+        match self {
+            Self::Sim(error) => format!("{} {coin}: {error}", network.short_name()),
+            _ => self.to_string(),
+        }
+    }
 }
 
 impl fmt::Display for ReplayError {

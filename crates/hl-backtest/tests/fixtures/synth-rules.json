@@ -1,0 +1,12 @@
+{
+  "instruments": [
+    {
+      "network": "testnet",
+      "coin": "SYNTH",
+      "versions": [
+        {"effective_from": "100", "sz_decimals": 2, "asset_id": "17"},
+        {"effective_from": "200", "sz_decimals": 3, "asset_id": "21"}
+      ]
+    }
+  ]
+}

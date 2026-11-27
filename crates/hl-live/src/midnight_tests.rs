@@ -150,6 +150,92 @@ fn run_midnight(
     retained_trace
 }
 
+fn with_rules_paper(
+    anchor: i64,
+    exercise: impl FnOnce(&Fixture, &mut WebSocket<TcpStream>, &AtomicBool),
+    inspect: impl FnOnce(&Fixture, std::io::Result<PathBuf>),
+) {
+    let root = std::env::temp_dir().join(format!("hl-live-rules-{anchor}-{}", std::process::id()));
+    fs::create_dir(&root).expect("new rules test directory");
+    let listener = listener();
+    let out_dir = root.join("runs");
+    let port = listener.local_addr().unwrap().port();
+    let settings = support::config_text_for_coin(&out_dir, port, "SYNTH")
+        .replace("qty_base = \"1\"", "qty_base = \"1.001\"");
+    let rules = root.join("rules.json");
+    fs::write(&rules, support::SYNTH_RULES).unwrap();
+    let config_path = root.join("paper.toml");
+    fs::write(
+        &config_path,
+        format!("rules_file = \"rules.json\"\n{settings}"),
+    )
+    .unwrap();
+    let config = PaperConfig::from_file(&config_path).expect("paper configuration");
+    let stamps = Arc::new(Mutex::new(Stamp {
+        wall_ns: anchor,
+        mono_ns: 0,
+    }));
+    let clock = PaperClock::controlled(anchor, Arc::clone(&stamps));
+    let shutdown = AtomicBool::new(false);
+    thread::scope(|scope| {
+        let worker = scope.spawn(|| run_paper_with_clock(&config, &shutdown, clock, |_| {}));
+        let _stop_on_unwind = StopReader(&shutdown);
+        let mut socket = support::connect_for_coin(&listener, "SYNTH");
+        let directory = fs::read_dir(&out_dir)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let fixture = Fixture {
+            stamps,
+            partial: directory.join("session.jsonl.part"),
+        };
+        fs::remove_file(rules).expect("remove the rules before the first order");
+        exercise(&fixture, &mut socket, &shutdown);
+        let deadline = Instant::now() + TIMEOUT;
+        while !worker.is_finished() {
+            assert!(Instant::now() < deadline, "paper did not stop");
+            thread::sleep(Duration::from_millis(5));
+        }
+        inspect(&fixture, worker.join().expect("paper thread"));
+    });
+    fs::remove_dir_all(root).expect("remove the synthetic session");
+}
+
+#[test]
+fn dated_rules_check_open_and_sealed_paper_after_the_file_is_deleted() {
+    with_rules_paper(
+        199,
+        |fixture, socket, shutdown| {
+            // At 199 ns the size needs three decimals and the first version permits two.
+            support::bbo_for_coin(socket, "SYNTH", 0, "98", "102");
+            fixture.wait_rows(|rows| count(rows, "action", "place") == 2);
+            support::trade_for_coin(socket, "SYNTH", 1, 1, "0.5");
+            support::bbo_for_coin(socket, "SYNTH", 2, "98", "102");
+            let rows = fixture.wait_rows(|rows| count(rows, "report", "rejected") == 2);
+            let file: Value = serde_json::from_str(support::SYNTH_RULES).unwrap();
+            assert_eq!(rows[0]["schema_version"], 2);
+            assert_eq!(rows[0]["rules"], file["instruments"][0]["versions"]);
+            for row in rows.iter().filter(|row| row["variant"] == "rejected") {
+                assert_eq!(row["reason"], "invalid_order");
+                assert_eq!(row["ts_exch_ns"], "199");
+            }
+            fixture.set_time(MIDNIGHT, (MIDNIGHT - 199) as u64);
+            fixture.wait_rows(|rows| rows.iter().any(|row| row["kind"] == "checkpoint"));
+            assert!(
+                check_session(&fixture.partial)
+                    .starts_with("checkpoint 1970-01-02T00:00:00Z matches")
+            );
+            shutdown.store(true, Ordering::Relaxed);
+        },
+        |_, result| {
+            let session = result.expect("sealed run").join("session.jsonl");
+            assert!(check_session(&session).starts_with("session matches"));
+        },
+    );
+}
+
 #[test]
 fn loopback_midnight_data_waits_for_sealed_raw_and_checks_open_copy() {
     run_midnight(
@@ -230,6 +316,40 @@ fn loopback_stop_after_midnight_seals_the_due_checkpoint_before_end() {
             let end = rows.last().unwrap();
             assert_eq!(end["stop_ns"], (MIDNIGHT + 1).to_string());
             assert_eq!(end["manifest"], assert_checkpoint(rows)["manifest"]);
+        },
+    );
+}
+
+#[test]
+fn trade_proving_a_99_ns_placement_stops_paper_when_rules_start_at_100_ns() {
+    with_rules_paper(
+        99,
+        |fixture, socket, _| {
+            support::bbo_for_coin(socket, "SYNTH", 0, "98", "102");
+            fixture.wait_rows(|rows| count(rows, "action", "place") == 2);
+            support::trade_for_coin(socket, "SYNTH", 1, 1, "0.5");
+        },
+        |fixture, result| {
+            let error = result.expect_err("placement takes effect before the first version");
+            assert_eq!(
+                error.to_string(),
+                "testnet SYNTH: instrument 3509668803 at effect time 99 ns: rule coverage starts at 100 ns"
+            );
+            let directory = fixture.partial.parent().expect("paper run directory");
+            assert!(!directory.join("session.jsonl").exists());
+            let rows = read_rows(&fixture.partial);
+            assert!(
+                rows.iter()
+                    .all(|row| row["kind"] != "end" && row["kind"] != "report")
+            );
+            let day = directory.join("loopback/19700101");
+            assert!(fs::read_dir(day).expect("raw source").any(|entry| {
+                entry
+                    .expect("raw file")
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".hlrec.zst.part")
+            }));
         },
     );
 }

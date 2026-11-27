@@ -54,7 +54,7 @@ fn dated_session(fixture: &Fixture) -> String {
     session.lines().concat()
 }
 
-fn cli_check(path: &Path) -> Output {
+pub(super) fn cli_check(path: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_hl-backtest"))
         .args(["run", "--check-session"])
         .arg(path)
