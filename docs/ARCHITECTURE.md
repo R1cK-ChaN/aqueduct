@@ -38,13 +38,13 @@ to the last event's local time if necessary. [RFC 0008 D4 and D5](rfc/0008-paper
 | Crate | Responsibility | State |
 | --- | --- | --- |
 | `hl-types` | Fixed-point values, timestamps, venue-neutral instrument ids derived from venue and symbol, orders, order actions and events. No dependencies. | Implemented |
-| `hl-rules` | Looks up perpetual rules by instrument and exchange time, checks prices and sizes, and finds the next valid price. Depends only on `hl-types`. [RFC 0009 D4](rfc/0009-instrument-identity.md#d4-supply-dated-instrument-rules-to-hl-sim) | Implemented, no callers yet |
+| `hl-rules` | Looks up perpetual rules by instrument and exchange time, checks prices and sizes, and finds the next valid price. Depends only on `hl-types`. [RFC 0009 D4](rfc/0009-instrument-identity.md#d4-supply-dated-instrument-rules-to-hl-sim) | Implemented |
 | `hl-strategy` | `Strategy` trait; `StrategyHost`, which owns the state a strategy reads; the example `FixedSpreadQuoter`. | Implemented |
 | `hl-gateway` | `OrderGateway` trait. The Hyperliquid client will be added behind a non-default feature. | Trait only |
 | `hl-sim` | Applies post-only actions proved by received market data, matches strict trade-throughs and schedules reports. | Minimal |
 | `hl-run` | Uses `hl-codec` to convert BBOs and trades for one coin, applies the trade cutoff and delivery clock, encodes session rows for actions, reports, gaps and timers, and computes the account at the stop. Performs no IO and reads no clock. | Incremental driver, session encoding and accounting |
 | `hl-backtest` | Reads and orders compressed recordings, writes the JSON summary and session file, and verifies a session by hashing the inputs and comparing an independent replay field by field. | Recording CLI and replay-check library |
-| `hl-codec` | `rawlog` frames recordings, parses `file_open` headers and identifies recording chains. `hyperliquid` owns the live-trade cutoff shared by loading and replay, network names, recording URL mapping, coin ids and dex extraction. It decodes WebSocket book and trade channels, the official L2 archive and `node_fills_by_block` into typed records. A caller-supplied coin resolver selects the records to convert to market events. Context channels and Binance are planned. | Partial |
+| `hl-codec` | `rawlog` frames recordings, parses `file_open` headers and identifies recording chains. `hyperliquid` owns the live-trade cutoff shared by loading and replay, network names, recording URL mapping, coin ids and dex extraction. It decodes WebSocket book and trade channels, the official L2 archive and `node_fills_by_block` into typed records. A caller-supplied coin resolver selects the records to convert to market events. For dated perpetual rules, `hyperliquid` parses JSON text into `hl-rules` histories and returns the instrument id, ordered versions and a `RuleBook` for the selected network and coin. [RFC 0009 D7](rfc/0009-instrument-identity.md#rules-file) | Partial. Context channels and Binance are planned. |
 | `hl-book` | `L2Book`: the visible levels of one instrument, built from snapshots and diffs. An L4 book is planned. | L2 only |
 | `hl-ledger` | One-instrument position, trading cash, reported fill fees, traded notional and marked gross and net profit. Replay and paper trading share this accounting. | v1, funding deferred |
 | `hl-recorder` | `run_source` runs one configured WebSocket feed with a caller-supplied `SourceSink`. The recorder sink stamps and queues raw records for the hourly zstd writer. The optional `hl-public-v1` policy checks the public source configuration and outgoing texts and limits connection attempts. [RFC 0010 D2–D3](rfc/0010-public-recording-dataset.md#d2-fixed-universe-for-v1) | v0 recorder CLI |
@@ -70,7 +70,7 @@ hl-types, hl-codec, hl-strategy, hl-sim, hl-run  <-  hl-backtest
 hl-types, hl-codec, hl-strategy, hl-sim, hl-run, hl-recorder  <-  hl-live
 hl-codec  <-  hl-recorder
 hl-types, hl-codec, hl-recorder  <-  hl-publish
-hl-types  <-  hl-codec
+hl-types, hl-rules  <-  hl-codec
 hl-types  <-  hl-book
 hl-types, hl-codec, hl-book  <-  hl-loader
 ```

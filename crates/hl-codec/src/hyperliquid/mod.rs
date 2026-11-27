@@ -13,11 +13,15 @@
 //!
 //! The official archives have their own entry points:
 //! [`decode_archive_l2_line`] and [`decode_fill_block`].
+//!
+//! [`parse_rules_file`] validates dated perpetual rules for an exact network
+//! and coin (RFC 0009 D7).
 
 mod archive;
 mod cutoff;
 mod events;
 mod identity;
+mod rules_file;
 mod ws;
 
 use core::fmt;
@@ -31,6 +35,7 @@ pub use archive::{
 pub use cutoff::TradeCutoff;
 pub use events::{UnknownCoin, market_events};
 pub use identity::{Network, dex, instrument_id};
+pub use rules_file::{RulesFile, RulesFileError, SelectedRules, parse_rules_file};
 pub use ws::{WsBbo, WsBook, WsBookDiff, WsFrame, WsTrade, decode_ws_frame};
 
 /// Why a payload could not be decoded.

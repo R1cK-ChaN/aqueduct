@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 data-encoding.workspace = true
+hl-rules.workspace = true
 hl-types.workspace = true
 miniz_oxide.workspace = true
 serde.workspace = true

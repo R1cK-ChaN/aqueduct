@@ -7,6 +7,8 @@
 //! - [`hyperliquid`]: decoding of the Hyperliquid WebSocket book and trade
 //!   channels, the official L2 archive and `node_fills_by_block` into typed
 //!   records and market events.
+//! - [`hyperliquid::parse_rules_file`]: dated perpetual rule histories for
+//!   a selected network and coin (RFC 0009 D7).
 //!
 //! Planned: the context channels and Binance reference data. Backfill and
 //! live data go through the same parsers so both produce identical events.
