@@ -16,6 +16,12 @@
 //!   The first received BBO or trade with `ts_exch > A` proves it. Before
 //!   applying that event, apply all proved actions in effect-time order,
 //!   then submission and batch order. Stamp their outcomes with `A`.
+//! - When a rule book is supplied, placements and modifications require
+//!   coverage at `A` before any ordinary rejection. After the notional
+//!   check, an off-grid price or over-precise size gives
+//!   [`RejectReason::InvalidOrder`] (HL-23, HL-24, HL-25 and HL-26 in
+//!   `docs/venues/hyperliquid.md`). Missing coverage stops the run.
+//!   Cancels need no lookup.
 //! - Post-only validation uses the newest already received best prices by
 //!   exchange time, with receipt order breaking ties. The proving event has
 //!   not updated the prices yet. A crossing order is rejected as
@@ -55,10 +61,15 @@
 //! stops at its inclusive cutoff and reads the remaining work through
 //! [`SimGateway::pending_actions`] and [`SimGateway::undelivered_reports`].
 
+mod error;
+
+pub use error::SimError;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use hl_gateway::OrderGateway;
+use hl_rules::{RuleBook, RuleVersion};
 use hl_types::{
     CancelReason, ClientOrderId, FeeRate, Fill, InstrumentId, Liquidity, MarketEvent,
     MarketEventKind, OrderAction, OrderEvent, OrderEventKind, OrderId, OrderSpec, Px, Qty,
@@ -216,6 +227,7 @@ struct BestPrices {
 #[derive(Debug)]
 pub struct SimGateway {
     config: SimConfig,
+    rules: Option<RuleBook>,
     /// Unproved actions, keyed by effect time and submission/batch sequence.
     inbound: BTreeMap<(Timestamp, u64), OrderAction>,
     /// Undelivered reports, keyed by delivery time and creation sequence.
@@ -235,10 +247,11 @@ pub struct SimGateway {
 }
 
 impl SimGateway {
-    /// Creates a venue with no orders and no market data.
+    /// Creates a venue with no orders, market data or dated rules.
     pub fn new(config: SimConfig) -> Self {
         Self {
             config,
+            rules: None,
             inbound: BTreeMap::new(),
             outbound: BTreeMap::new(),
             last_report_delivery: BTreeMap::new(),
@@ -254,15 +267,27 @@ impl SimGateway {
         }
     }
 
+    /// Creates an empty venue that checks placements and modifications against `rules`.
+    pub fn with_rules(config: SimConfig, rules: RuleBook) -> Self {
+        Self {
+            rules: Some(rules),
+            ..Self::new(config)
+        }
+    }
+
     /// Processes one input in receipt order. A BBO or trade first proves
     /// pending actions with strictly earlier effect times, then is applied.
     /// `ts_local` must never decrease. `ts_exch` may decrease.
-    pub fn on_market_event(&mut self, event: &MarketEvent) {
+    ///
+    /// On a rule lookup error, earlier actions and their reports are retained.
+    /// The failing action has been removed without a report. The remaining
+    /// actions stay queued and the proving market event has not been applied.
+    pub fn on_market_event(&mut self, event: &MarketEvent) -> Result<(), SimError> {
         if matches!(
             &event.kind,
             MarketEventKind::Bbo(_) | MarketEventKind::Trade(_)
         ) {
-            self.prove_actions(event.ts_exch, event.ts_local);
+            self.prove_actions(event.ts_exch, event.ts_local)?;
         }
         match &event.kind {
             MarketEventKind::L2Snapshot(snapshot) => {
@@ -291,6 +316,7 @@ impl SimGateway {
             }
             MarketEventKind::L2Diff(_) | MarketEventKind::FeedGap => {}
         }
+        Ok(())
     }
 
     /// Earliest determined report deadline. Pending actions are not wake-ups.
@@ -323,19 +349,30 @@ impl SimGateway {
         }
     }
 
-    fn prove_actions(&mut self, exchange_time: Timestamp, receipt_time: Timestamp) {
+    fn prove_actions(
+        &mut self,
+        exchange_time: Timestamp,
+        receipt_time: Timestamp,
+    ) -> Result<(), SimError> {
         while let Some((&(effective_at, _), _)) = self.inbound.first_key_value()
             && effective_at < exchange_time
         {
             let (_, action) = self.inbound.pop_first().expect("pending action exists");
-            self.apply(action, effective_at, receipt_time);
+            self.apply(action, effective_at, receipt_time)?;
         }
+        Ok(())
     }
 
-    fn apply(&mut self, action: OrderAction, effective_at: Timestamp, receipt_time: Timestamp) {
+    fn apply(
+        &mut self,
+        action: OrderAction,
+        effective_at: Timestamp,
+        receipt_time: Timestamp,
+    ) -> Result<(), SimError> {
         match action {
             OrderAction::Place { cloid, order } => {
-                let kind = match self.place(cloid, &order, effective_at) {
+                let version = self.rules_at(order.instrument, effective_at)?;
+                let kind = match self.place(cloid, &order, effective_at, version) {
                     Ok(oid) => OrderEventKind::Accepted { oid },
                     Err(reason) => OrderEventKind::Rejected { reason },
                 };
@@ -347,7 +384,10 @@ impl SimGateway {
                 px,
                 qty,
             } => {
-                let kind = match self.modify(cloid, px, qty, effective_at) {
+                let index = self.position_of(cloid);
+                let rule_instrument = index.map_or(instrument, |i| self.resting[i].instrument);
+                let version = self.rules_at(rule_instrument, effective_at)?;
+                let kind = match self.modify(index, px, qty, effective_at, version) {
                     Ok(()) => OrderEventKind::Modified { px, qty },
                     Err(reason) => OrderEventKind::ModifyRejected { reason },
                 };
@@ -389,6 +429,25 @@ impl SimGateway {
                 }
             }
         }
+        Ok(())
+    }
+
+    fn rules_at(
+        &self,
+        instrument: InstrumentId,
+        effective_at: Timestamp,
+    ) -> Result<Option<RuleVersion>, SimError> {
+        let Some(rules) = &self.rules else {
+            return Ok(None);
+        };
+        let version = rules
+            .at(instrument, effective_at)
+            .map_err(|source| SimError {
+                instrument,
+                effective_at,
+                source,
+            })?;
+        Ok(Some(*version))
     }
 
     fn place(
@@ -396,6 +455,7 @@ impl SimGateway {
         cloid: ClientOrderId,
         order: &OrderSpec,
         effective_at: Timestamp,
+        version: Option<RuleVersion>,
     ) -> Result<OrderId, RejectReason> {
         if !self.seen_cloids.insert(cloid) {
             return Err(RejectReason::DuplicateClientOrderId);
@@ -403,7 +463,7 @@ impl SimGateway {
         if order.tif != TimeInForce::Alo || order.reduce_only {
             return Err(RejectReason::Unsupported);
         }
-        self.check_post_only(order.instrument, order.side, order.px, order.qty)?;
+        self.check_post_only(order.instrument, order.side, order.px, order.qty, version)?;
         let oid = OrderId(self.next_oid);
         self.next_oid += 1;
         self.resting.push(RestingOrder {
@@ -420,14 +480,15 @@ impl SimGateway {
 
     fn modify(
         &mut self,
-        cloid: ClientOrderId,
+        index: Option<usize>,
         px: Px,
         qty: Qty,
         effective_at: Timestamp,
+        version: Option<RuleVersion>,
     ) -> Result<(), RejectReason> {
-        let index = self.position_of(cloid).ok_or(RejectReason::UnknownOrder)?;
+        let index = index.ok_or(RejectReason::UnknownOrder)?;
         let old = self.resting[index];
-        self.check_post_only(old.instrument, old.side, px, qty)?;
+        self.check_post_only(old.instrument, old.side, px, qty, version)?;
         self.save_superseded(old, effective_at);
         let order = &mut self.resting[index];
         order.px = px;
@@ -452,6 +513,7 @@ impl SimGateway {
         side: Side,
         px: Px,
         qty: Qty,
+        version: Option<RuleVersion>,
     ) -> Result<(), RejectReason> {
         if !px.is_positive() || !qty.is_positive() {
             return Err(RejectReason::InvalidOrder);
@@ -459,6 +521,14 @@ impl SimGateway {
         let notional = px.notional(qty).ok_or(RejectReason::InvalidOrder)?;
         if notional < self.config.min_order_notional {
             return Err(RejectReason::BelowMinNotional);
+        }
+        if let Some(version) = version {
+            version
+                .check_price(px)
+                .map_err(|_| RejectReason::InvalidOrder)?;
+            version
+                .check_size(qty)
+                .map_err(|_| RejectReason::InvalidOrder)?;
         }
         let best = self.best.get(&instrument).copied().unwrap_or_default();
         let would_cross = match side {

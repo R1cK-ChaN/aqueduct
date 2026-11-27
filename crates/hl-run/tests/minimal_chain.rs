@@ -1187,3 +1187,153 @@ fn paper_and_full_traces_agree_on_work_fills_end_counts_misses_and_account() {
     assert_eq!(paper_pnl.net, usd("0.039241"));
     assert_eq!(paper_pnl.position, qty("200"));
 }
+
+fn rule_test_bid() -> OrderSpec {
+    OrderSpec {
+        instrument: MON,
+        side: Side::Buy,
+        px: px("100"),
+        qty: qty("1"),
+        tif: TimeInForce::Alo,
+        reduce_only: false,
+    }
+}
+
+/// A strategy submits on the first BBO. A trade at 205 ns proves the batch.
+fn replay_rule_orders(
+    submitted_ns: i64,
+    submit: impl FnOnce(&mut Actions),
+) -> (Result<ReplayTrace, ReplayError>, Vec<serde_json::Value>) {
+    use hl_rules::{RuleBook, RuleHistory, RuleVersion};
+
+    struct SubmitOnce<F>(Option<F>);
+    impl<F: FnOnce(&mut Actions)> Strategy for SubmitOnce<F> {
+        fn on_event(&mut self, _: &Context<'_>, _: &Event, actions: &mut Actions) {
+            if let Some(submit) = self.0.take() {
+                submit(actions);
+            }
+        }
+    }
+
+    let ns = Timestamp::from_nanos;
+    let history = RuleHistory::new(vec![
+        RuleVersion::new(ns(100), 2, 17).expect("first version"),
+        RuleVersion::new(ns(200), 3, 21).expect("second version"),
+    ])
+    .expect("increasing rule starts");
+    let mut rules = RuleBook::new();
+    rules.insert(MON, history).expect("first history for MON");
+    let config = SimConfig {
+        order_latency: Duration::from_nanos(1),
+        report_latency: Duration::ZERO,
+        maker_fee: hl_types::FeeRate::ZERO,
+        min_order_notional: usd("10"),
+    };
+    let mut sim = SimGateway::with_rules(config, rules);
+    let mut host = StrategyHost::new(SubmitOnce(Some(submit)), 1);
+    let mut session = session();
+    let events = [
+        MarketEvent {
+            ts_exch: ns(submitted_ns),
+            ts_local: ns(submitted_ns),
+            ..bbo(0, "99", "101")
+        },
+        MarketEvent {
+            ts_exch: ns(205),
+            ts_local: ns(205),
+            ..trade(0, "100", "1", Side::Buy)
+        },
+    ];
+    let origins = [1, 2].map(|record_index| EventOrigin {
+        position: RawPosition {
+            file_index: 0,
+            record_index,
+        },
+        gap_cause: None,
+    });
+    let result = hl_run::replay_with_session(
+        &mut host,
+        &mut sim,
+        &events,
+        &origins,
+        ns(205),
+        &mut session,
+    );
+    let rows = session
+        .lines()
+        .iter()
+        .map(|line| serde_json::from_str(line).expect("valid session JSON"))
+        .collect();
+    (result, rows)
+}
+
+#[test]
+fn session_reports_rule_rejections_at_the_order_effect_time() {
+    // The last two bids also cross the ask at 101.
+    for (price, size) in [
+        ("100.001", "1"),
+        ("100", "1.001"),
+        ("101.001", "1"),
+        ("101", "1.001"),
+    ] {
+        let (result, rows) = replay_rule_orders(100, |actions| {
+            let bid = rule_test_bid();
+            let resting = actions.place(bid);
+            let px = px(price);
+            let qty = qty(size);
+            actions.place(OrderSpec { px, qty, ..bid });
+            actions.modify(MON, resting, px, qty);
+        });
+        result.expect("covered batch");
+        let reports: Vec<_> = rows.iter().filter(|row| row["kind"] == "report").collect();
+        assert_eq!(reports.len(), 3);
+        assert_eq!(reports[0]["variant"], "accepted");
+        for (row, variant) in reports[1..].iter().zip(["rejected", "modify_rejected"]) {
+            assert_eq!(row["variant"], variant);
+            assert_eq!(row["reason"], "invalid_order");
+            assert_eq!(row["ts_exch_ns"], "101");
+            assert_eq!(row["ts_local_ns"], "205");
+        }
+    }
+}
+
+#[test]
+fn missing_rule_coverage_stops_replay_after_the_action_row() {
+    let check = |submit: fn(&mut Actions)| {
+        let (result, rows) = replay_rule_orders(98, submit);
+        let error = result.expect_err("effect time precedes the first rule");
+        let ns = Timestamp::from_nanos;
+        assert_eq!(
+            error,
+            ReplayError::Sim(hl_sim::SimError {
+                instrument: MON,
+                effective_at: ns(99),
+                source: hl_rules::RuleError::MissingCoverage {
+                    ts_exch: ns(99),
+                    first_start: ns(100),
+                },
+            })
+        );
+        let message = error.to_string();
+        for detail in ["instrument 7", "99 ns", "100 ns"] {
+            assert!(message.contains(detail), "{message}");
+        }
+        let kinds: Vec<_> = rows
+            .iter()
+            .map(|row| row["kind"].as_str().expect("session row kind"))
+            .collect();
+        assert_eq!(kinds, ["start", "action"]);
+    };
+    check(|actions| {
+        actions.place(rule_test_bid());
+    });
+    check(|actions| {
+        actions.place(OrderSpec {
+            tif: TimeInForce::Ioc,
+            ..rule_test_bid()
+        });
+    });
+    check(|actions| {
+        actions.modify(MON, ClientOrderId::from_u128(42), px("100"), qty("1"));
+    });
+}

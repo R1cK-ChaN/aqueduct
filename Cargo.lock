@@ -470,6 +470,7 @@ dependencies = [
  "hl-codec",
  "hl-gateway",
  "hl-ledger",
+ "hl-rules",
  "hl-sim",
  "hl-strategy",
  "hl-types",
@@ -481,6 +482,7 @@ name = "hl-sim"
 version = "0.1.0"
 dependencies = [
  "hl-gateway",
+ "hl-rules",
  "hl-types",
 ]
 

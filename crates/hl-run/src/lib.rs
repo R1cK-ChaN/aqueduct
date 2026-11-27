@@ -26,7 +26,7 @@ use std::collections::BinaryHeap;
 use std::fmt;
 
 use hl_gateway::OrderGateway;
-use hl_sim::{LatePrintMisses, SimGateway};
+use hl_sim::{LatePrintMisses, SimError, SimGateway};
 use hl_strategy::{Strategy, StrategyHost};
 use hl_types::{
     Event, MarketEvent, MarketEventKind, OrderAction, OrderEvent, OrderEventKind, TimerEvent,
@@ -40,7 +40,7 @@ pub mod pnl;
 pub mod recording;
 pub mod session;
 
-/// Why input or a timestamp closure violates the driver contract. `index`
+/// Why the driver could not process an input or close a timestamp. `index`
 /// is the zero-based position of the offending market or gap event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplayError {
@@ -75,6 +75,8 @@ pub enum ReplayError {
         /// Position of the event.
         index: usize,
     },
+    /// The simulator could not select rules for an action at its effect time.
+    Sim(SimError),
 }
 
 impl fmt::Display for ReplayError {
@@ -105,11 +107,19 @@ impl fmt::Display for ReplayError {
                     "market event {index}: feed gap and raw gap cause disagree"
                 )
             }
+            Self::Sim(error) => error.fmt(f),
         }
     }
 }
 
-impl std::error::Error for ReplayError {}
+impl std::error::Error for ReplayError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Sim(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 /// Work left when the inclusive stop has been processed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -333,6 +343,7 @@ impl<'a, S: Strategy> IncrementalDriver<'a, S> {
     ///
     /// Returns an error without processing the input if its local time is
     /// before its exchange time, decreases, or has already been closed.
+    /// A failed simulator rule lookup stops replay before the strategy receives the input.
     pub fn on_market_event(&mut self, event: &MarketEvent) -> Result<(), ReplayError> {
         self.process_market_event(event, None)
     }
@@ -368,7 +379,10 @@ impl<'a, S: Strategy> IncrementalDriver<'a, S> {
             });
         }
         self.scheduler.run_due(|at| at < event.ts_local);
-        self.scheduler.gateway.on_market_event(event);
+        self.scheduler
+            .gateway
+            .on_market_event(event)
+            .map_err(ReplayError::Sim)?;
         if matches!(event.kind, MarketEventKind::FeedGap)
             && let Some(session) = self.scheduler.session.as_deref_mut()
         {

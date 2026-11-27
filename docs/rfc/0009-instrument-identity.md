@@ -406,7 +406,7 @@ built at a different commit stops before replay.
 | Issue | Crates and work | Owner review |
 | --- | --- | --- |
 | 1. Read dated histories (implemented) | `hl-codec` validates the rules file with `hl-rules` and returns the selected pair's instrument id, ordered versions and `RuleBook`. | No special review. |
-| 2. Check orders on proof | `hl-sim` applies the checks and returns `InvalidOrder` for an off-grid price or an over-precise size. `hl-run` propagates a coverage error. | Yes (`hl-sim`). |
+| 2. Check orders on proof (implemented) | `hl-sim` applies the checks and returns `InvalidOrder` for an off-grid price or an over-precise size. `hl-run` propagates a coverage error. | Yes (`hl-sim`). |
 | 3. Record and rebuild the history | `hl-run` writes schema version 2 with `start.rules` and `hl-backtest` rebuilds the history from it. Keep the v1 layout for runs without rules. Update the paper start in `hl-live` as needed and document both versions in `docs/session-file.md`. | No special review. Both `hl-sim` parameter functions stay as written. |
 | 4. Accept the file in both drivers | `hl-backtest` and `hl-live` expose the CLI and config inputs, the no-check diagnostic and the end-to-end replay tests. | No special review. |
 | 5. Import a saved `meta` response | The offline importer in `hl-codec` first needs a register entry for the `meta` response layout and how it names builder-dex coins. [Hyperliquid venue register](../venues/hyperliquid.md) | No special review. |
