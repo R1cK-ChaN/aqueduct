@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 hl-types.workspace = true
 hl-gateway.workspace = true
+hl-rules.workspace = true
 
 [lints]
 workspace = true

@@ -113,7 +113,7 @@ fn prove_and_poll(sim: &mut SimGateway, effect_ms: i64) -> Vec<OrderEvent> {
     let mut proof = bbo(effect_ms, "100", "101");
     proof.ts_exch = ms(effect_ms) + Duration::from_nanos(1);
     proof.ts_local = proof.ts_exch;
-    sim.on_market_event(&proof);
+    sim.on_market_event(&proof).unwrap();
     let mut out = Vec::new();
     sim.poll_events(proof.ts_local, &mut out);
     out
@@ -176,7 +176,7 @@ fn post_only_order_is_accepted_and_reported() {
 #[test]
 fn post_only_order_that_would_cross_is_rejected() {
     let mut sim = sim(0, 0);
-    sim.on_market_event(&bbo(0, "100", "101"));
+    sim.on_market_event(&bbo(0, "100", "101")).unwrap();
     sim.submit(
         ms(0),
         &[
@@ -311,7 +311,8 @@ fn trade_through_the_price_fills_at_the_order_price_with_the_maker_fee() {
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "2")]);
     prove_and_poll(&mut sim, 0);
 
-    sim.on_market_event(&trade(10, "99.9", "5", Side::Sell));
+    sim.on_market_event(&trade(10, "99.9", "5", Side::Sell))
+        .unwrap();
     let events = poll(&mut sim, 10);
     // Fill min(2, 5) = 2 at 100. Notional 100 * 2 = 200,
     // maker fee 200 * 0.00015 = 0.03.
@@ -337,7 +338,8 @@ fn ask_fills_when_a_buyer_trades_above_it() {
     sim.submit(ms(0), &[place(0, Side::Sell, "101", "1")]);
     prove_and_poll(&mut sim, 0);
 
-    sim.on_market_event(&trade(10, "101.5", "1", Side::Buy));
+    sim.on_market_event(&trade(10, "101.5", "1", Side::Buy))
+        .unwrap();
     let fill = filled(poll(&mut sim, 10)[0].kind);
     assert_eq!(
         (fill.side, fill.px, fill.qty),
@@ -357,8 +359,10 @@ fn trade_at_the_order_price_does_not_fill() {
     );
     prove_and_poll(&mut sim, 0);
 
-    sim.on_market_event(&trade(10, "100", "5", Side::Sell));
-    sim.on_market_event(&trade(11, "101", "5", Side::Buy));
+    sim.on_market_event(&trade(10, "100", "5", Side::Sell))
+        .unwrap();
+    sim.on_market_event(&trade(11, "101", "5", Side::Buy))
+        .unwrap();
     assert!(poll(&mut sim, 11).is_empty());
 }
 
@@ -370,7 +374,7 @@ fn trade_on_another_instrument_does_not_fill() {
 
     let mut other = trade(10, "99", "5", Side::Sell);
     other.instrument = JUP;
-    sim.on_market_event(&other);
+    sim.on_market_event(&other).unwrap();
     assert!(poll(&mut sim, 10).is_empty());
 }
 
@@ -380,13 +384,16 @@ fn small_trades_fill_an_order_in_parts() {
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "2")]);
     prove_and_poll(&mut sim, 0);
 
-    sim.on_market_event(&trade(10, "99", "0.5", Side::Sell));
+    sim.on_market_event(&trade(10, "99", "0.5", Side::Sell))
+        .unwrap();
     assert_eq!(filled(poll(&mut sim, 10)[0].kind).qty, qty("0.5"));
 
-    sim.on_market_event(&trade(20, "99", "9", Side::Sell));
+    sim.on_market_event(&trade(20, "99", "9", Side::Sell))
+        .unwrap();
     assert_eq!(filled(poll(&mut sim, 20)[0].kind).qty, qty("1.5"));
 
-    sim.on_market_event(&trade(30, "99", "9", Side::Sell));
+    sim.on_market_event(&trade(30, "99", "9", Side::Sell))
+        .unwrap();
     assert!(
         poll(&mut sim, 30).is_empty(),
         "the order is gone once fully filled"
@@ -406,7 +413,8 @@ fn one_trade_is_shared_best_price_first() {
     );
     prove_and_poll(&mut sim, 0);
 
-    sim.on_market_event(&trade(10, "99", "5", Side::Sell));
+    sim.on_market_event(&trade(10, "99", "5", Side::Sell))
+        .unwrap();
     let fills: Vec<_> = kinds(&mut sim, 10)
         .into_iter()
         .map(|(seq, kind)| (seq, filled(kind).px, filled(kind).qty))
@@ -432,7 +440,8 @@ fn canceled_order_no_longer_fills_and_cannot_be_canceled_twice() {
     sim.submit(ms(1), &[cancel(0)]);
     assert_eq!(proved_kinds(&mut sim, 1), [(0, canceled())]);
 
-    sim.on_market_event(&trade(10, "99", "5", Side::Sell));
+    sim.on_market_event(&trade(10, "99", "5", Side::Sell))
+        .unwrap();
     sim.submit(ms(10), &[cancel(0)]);
     assert_eq!(
         proved_kinds(&mut sim, 10),
@@ -511,13 +520,15 @@ fn modify_changes_price_and_open_quantity() {
         )]
     );
 
-    sim.on_market_event(&trade(10, "99.5", "9", Side::Sell));
+    sim.on_market_event(&trade(10, "99.5", "9", Side::Sell))
+        .unwrap();
     assert!(
         poll(&mut sim, 10).is_empty(),
         "the old price no longer rests"
     );
 
-    sim.on_market_event(&trade(20, "98", "9", Side::Sell));
+    sim.on_market_event(&trade(20, "98", "9", Side::Sell))
+        .unwrap();
     let fill = filled(poll(&mut sim, 20)[0].kind);
     assert_eq!((fill.px, fill.qty), (px("99"), qty("3")));
 }
@@ -525,7 +536,7 @@ fn modify_changes_price_and_open_quantity() {
 #[test]
 fn rejected_modify_leaves_the_order_unchanged() {
     let mut sim = sim(0, 0);
-    sim.on_market_event(&bbo(0, "100", "101"));
+    sim.on_market_event(&bbo(0, "100", "101")).unwrap();
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "2")]);
     prove_and_poll(&mut sim, 0);
 
@@ -553,7 +564,8 @@ fn rejected_modify_leaves_the_order_unchanged() {
         ]
     );
 
-    sim.on_market_event(&trade(10, "99", "9", Side::Sell));
+    sim.on_market_event(&trade(10, "99", "9", Side::Sell))
+        .unwrap();
     let fill = filled(poll(&mut sim, 10)[0].kind);
     assert_eq!((fill.px, fill.qty), (px("100"), qty("2")));
 }
@@ -570,7 +582,7 @@ fn actions_and_reports_are_delayed_by_the_configured_latencies() {
     assert!(poll(&mut sim, 120).is_empty());
     assert_eq!(sim.pending_actions(), 1);
 
-    sim.on_market_event(&bbo(121, "100", "101"));
+    sim.on_market_event(&bbo(121, "100", "101")).unwrap();
     // E = 121 > 100 proves acceptance. max(100 + 50, 121) = 150.
     assert_eq!(sim.pending_actions(), 0);
     assert_eq!(sim.undelivered_reports(), 1);
@@ -588,13 +600,13 @@ fn actions_and_reports_are_delayed_by_the_configured_latencies() {
 #[test]
 fn order_is_checked_against_the_book_at_arrival_time() {
     let mut sim = sim(100, 0);
-    sim.on_market_event(&bbo(0, "100", "101"));
+    sim.on_market_event(&bbo(0, "100", "101")).unwrap();
     sim.submit(ms(0), &[place(0, Side::Buy, "100.5", "2")]);
 
-    sim.on_market_event(&bbo(50, "99", "100"));
+    sim.on_market_event(&bbo(50, "99", "100")).unwrap();
     // A = 0 + 100 = 100. E = 101 proves the action before its own
     // 100 / 101 quote is applied, so bid 100.5 crosses the saved ask 100.
-    sim.on_market_event(&bbo(101, "100", "101"));
+    sim.on_market_event(&bbo(101, "100", "101")).unwrap();
     assert_eq!(
         kinds(&mut sim, 101),
         [(0, rejected(RejectReason::WouldCross))]
@@ -606,11 +618,12 @@ fn order_is_not_live_before_it_arrives() {
     let mut sim = sim(100, 0);
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "2")]);
 
-    sim.on_market_event(&trade(50, "99", "9", Side::Sell));
+    sim.on_market_event(&trade(50, "99", "9", Side::Sell))
+        .unwrap();
     assert!(poll(&mut sim, 100).is_empty());
     // E = 50 < A = 100 cannot prove or fill the order. The later BBO
     // E = R = 101 proves acceptance, delivered at max(100, 101) = 101.
-    sim.on_market_event(&bbo(101, "100", "101"));
+    sim.on_market_event(&bbo(101, "100", "101")).unwrap();
     assert_eq!(kinds(&mut sim, 101), [(0, accepted(1))]);
 }
 
@@ -619,14 +632,15 @@ fn cancel_in_flight_loses_to_a_fill() {
     let mut sim = sim(100, 0);
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "2")]);
     // Placement A = 100 is first proved at 101.
-    sim.on_market_event(&bbo(101, "100", "101"));
+    sim.on_market_event(&bbo(101, "100", "101")).unwrap();
     assert_eq!(kinds(&mut sim, 101), [(0, accepted(1))]);
 
     sim.submit(ms(101), &[cancel(0)]);
-    sim.on_market_event(&trade(150, "99", "9", Side::Sell));
+    sim.on_market_event(&trade(150, "99", "9", Side::Sell))
+        .unwrap();
     // Cancel S = 101 + 100 = 201. The E = 150 print first fills
     // min(2, 9) = 2. E = 202 then proves cancel, which finds no order.
-    sim.on_market_event(&bbo(202, "100", "101"));
+    sim.on_market_event(&bbo(202, "100", "101")).unwrap();
     let events = kinds(&mut sim, 202);
     assert_eq!(events.len(), 2);
     assert_eq!(filled(events[0].1).qty, qty("2"));
@@ -645,13 +659,14 @@ fn cancel_in_flight_loses_to_a_fill() {
 fn cancel_that_arrives_first_prevents_the_fill() {
     let mut sim = sim(100, 0);
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "2")]);
-    sim.on_market_event(&bbo(101, "100", "101"));
+    sim.on_market_event(&bbo(101, "100", "101")).unwrap();
     poll(&mut sim, 101);
 
     sim.submit(ms(101), &[cancel(0)]);
     // S = 101 + 100 = 201. E = 202 > S proves cancel before matching,
     // so there is no resting order left for the trade to fill.
-    sim.on_market_event(&trade(202, "99", "9", Side::Sell));
+    sim.on_market_event(&trade(202, "99", "9", Side::Sell))
+        .unwrap();
     assert_eq!(kinds(&mut sim, 202), [(0, canceled())]);
 }
 
@@ -671,7 +686,8 @@ fn l2_snapshot_sets_the_best_prices() {
             bids: vec![level("100"), level("99")],
             asks: vec![level("101"), level("102")],
         }),
-    });
+    })
+    .unwrap();
     sim.submit(
         ms(0),
         &[
@@ -696,14 +712,15 @@ fn equality_leaves_actions_pending_and_one_nanosecond_later_proves_them() {
         ],
     );
     // A = 5 + 10 = 15 ms. E = 15 is equality, so neither action is proved.
-    sim.on_market_event(&received(bbo(15, "100", "101"), 20));
+    sim.on_market_event(&received(bbo(15, "100", "101"), 20))
+        .unwrap();
     assert!(poll(&mut sim, 20).is_empty());
     assert_eq!(sim.pending_actions(), 2);
     assert_eq!(sim.next_wakeup(), None);
 
     let mut proof = received(bbo(15, "100", "101"), 21);
     proof.ts_exch = Timestamp::from_nanos(15_000_001);
-    sim.on_market_event(&proof);
+    sim.on_market_event(&proof).unwrap();
     // E = 15,000,001 ns > A = 15,000,000 ns. Both deliveries are
     // max(15 + 0, 21) = 21 ms, with batch order breaking the tie.
     let reports = poll(&mut sim, 21);
@@ -719,13 +736,15 @@ fn equality_leaves_actions_pending_and_one_nanosecond_later_proves_them() {
 #[test]
 fn zero_latency_response_needs_a_later_qualifying_event() {
     let mut sim = sim(0, 0);
-    sim.on_market_event(&bbo(5, "100", "101"));
+    sim.on_market_event(&bbo(5, "100", "101")).unwrap();
     sim.submit(ms(5), &[place(0, Side::Buy, "100", "1")]);
     assert!(poll(&mut sim, 5).is_empty());
     // A = 5 + 0 = 5. Receiving E = 5 again still proves nothing.
-    sim.on_market_event(&received(bbo(5, "100", "101"), 6));
+    sim.on_market_event(&received(bbo(5, "100", "101"), 6))
+        .unwrap();
     assert!(poll(&mut sim, 6).is_empty());
-    sim.on_market_event(&received(bbo(6, "100", "101"), 7));
+    sim.on_market_event(&received(bbo(6, "100", "101"), 7))
+        .unwrap();
     // E = 6 > 5 first proves it, delivery max(5 + 0, 7) = 7.
     let reports = poll(&mut sim, 7);
     assert_eq!(reports.len(), 1);
@@ -736,14 +755,18 @@ fn zero_latency_response_needs_a_later_qualifying_event() {
 fn a_late_trade_must_follow_the_resting_versions_effect_time() {
     let mut sim = sim(100, 0);
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "1")]);
-    sim.on_market_event(&received(bbo(150, "100", "101"), 200));
+    sim.on_market_event(&received(bbo(150, "100", "101"), 200))
+        .unwrap();
     assert_eq!(kinds(&mut sim, 200), [(0, accepted(1))]);
 
     // A = 100. Neither E = 99 nor E = 100 may fill this version.
-    sim.on_market_event(&received(trade(99, "99", "1", Side::Sell), 201));
-    sim.on_market_event(&received(trade(100, "99", "1", Side::Sell), 202));
+    sim.on_market_event(&received(trade(99, "99", "1", Side::Sell), 201))
+        .unwrap();
+    sim.on_market_event(&received(trade(100, "99", "1", Side::Sell), 202))
+        .unwrap();
     assert!(poll(&mut sim, 202).is_empty());
-    sim.on_market_event(&received(trade(101, "99", "0.4", Side::Sell), 203));
+    sim.on_market_event(&received(trade(101, "99", "0.4", Side::Sell), 203))
+        .unwrap();
     // E = 101 > 100 fills min(1, 0.4) = 0.4 despite arriving after E = 150.
     let reports = poll(&mut sim, 203);
     assert_eq!(reports.len(), 1);
@@ -757,10 +780,13 @@ fn a_late_trade_must_follow_the_resting_versions_effect_time() {
 #[test]
 fn an_old_bbo_cannot_replace_the_quote_used_for_post_only_validation() {
     let mut sim = sim(0, 0);
-    sim.on_market_event(&received(bbo(100, "100", "101"), 110));
-    sim.on_market_event(&received(bbo(50, "98", "99"), 120));
+    sim.on_market_event(&received(bbo(100, "100", "101"), 110))
+        .unwrap();
+    sim.on_market_event(&received(bbo(50, "98", "99"), 120))
+        .unwrap();
     sim.submit(ms(120), &[place(0, Side::Buy, "100.5", "1")]);
-    sim.on_market_event(&received(bbo(121, "98", "99"), 130));
+    sim.on_market_event(&received(bbo(121, "98", "99"), 130))
+        .unwrap();
     // A = 120 and E = 121 proves it. The saved quote has E = 100,
     // so 100.5 < 101 passes. Both the old and the proving ask 99 would fail.
     let reports = poll(&mut sim, 130);
@@ -775,10 +801,12 @@ fn an_old_bbo_cannot_replace_the_quote_used_for_post_only_validation() {
 #[test]
 fn equal_exchange_time_quotes_use_the_last_receipt() {
     let mut sim = sim(0, 0);
-    sim.on_market_event(&received(bbo(10, "100", "101"), 10));
-    sim.on_market_event(&received(bbo(10, "99", "100"), 11));
+    sim.on_market_event(&received(bbo(10, "100", "101"), 10))
+        .unwrap();
+    sim.on_market_event(&received(bbo(10, "99", "100"), 11))
+        .unwrap();
     sim.submit(ms(11), &[place(0, Side::Buy, "100.5", "1")]);
-    sim.on_market_event(&bbo(12, "100", "101"));
+    sim.on_market_event(&bbo(12, "100", "101")).unwrap();
     // Both saved quotes have E = 10. The last receipt supplies ask 100,
     // and 100.5 >= 100 rejects before the proving ask 101 is applied.
     assert_eq!(
@@ -791,13 +819,16 @@ fn equal_exchange_time_quotes_use_the_last_receipt() {
 fn reports_wait_for_receipt_and_stay_in_order_for_each_cloid() {
     let mut sim = sim(0, 100);
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "2")]);
-    sim.on_market_event(&received(bbo(1, "100", "101"), 10));
+    sim.on_market_event(&received(bbo(1, "100", "101"), 10))
+        .unwrap();
     // Acceptance X = 0, R = 10. max(0 + 100, 10) = 100.
     assert!(poll(&mut sim, 99).is_empty());
     assert_eq!(poll(&mut sim, 100)[0].kind, accepted(1));
 
-    sim.on_market_event(&received(trade(200, "99", "0.4", Side::Sell), 210));
-    sim.on_market_event(&received(trade(150, "99", "0.3", Side::Sell), 220));
+    sim.on_market_event(&received(trade(200, "99", "0.4", Side::Sell), 210))
+        .unwrap();
+    sim.on_market_event(&received(trade(150, "99", "0.3", Side::Sell), 220))
+        .unwrap();
     // First fill is due at max(200 + 100, 210) = 300.
     // Second nominal delivery max(150 + 100, 220) = 250 is raised to
     // this cloid's prior scheduled delivery 300. Remaining size is 1.3.
@@ -816,7 +847,8 @@ fn reports_wait_for_receipt_and_stay_in_order_for_each_cloid() {
     assert_eq!(filled(reports[0].kind).qty, qty("0.4"));
     assert_eq!(filled(reports[1].kind).qty, qty("0.3"));
 
-    sim.on_market_event(&received(trade(250, "99", "0.2", Side::Sell), 400));
+    sim.on_market_event(&received(trade(250, "99", "0.2", Side::Sell), 400))
+        .unwrap();
     // The receipt floor now dominates, max(250 + 100, 400, 300) = 400.
     let reports = poll(&mut sim, 400);
     assert_eq!(
@@ -836,11 +868,13 @@ fn reports_across_orders_follow_due_time_then_creation_order() {
             place(1, Side::Sell, "101", "1"),
         ],
     );
-    sim.on_market_event(&bbo(1, "100", "101"));
+    sim.on_market_event(&bbo(1, "100", "101")).unwrap();
     poll(&mut sim, 100);
 
-    sim.on_market_event(&received(trade(200, "99", "0.2", Side::Sell), 210));
-    sim.on_market_event(&received(trade(150, "102", "0.3", Side::Buy), 220));
+    sim.on_market_event(&received(trade(200, "99", "0.2", Side::Sell), 210))
+        .unwrap();
+    sim.on_market_event(&received(trade(150, "102", "0.3", Side::Buy), 220))
+        .unwrap();
     // Bid fill created first is due 200 + 100 = 300. Ask fill is due
     // 150 + 100 = 250, so the latter report must be polled first.
     assert_eq!(sim.next_wakeup(), Some(ms(250)));
@@ -849,8 +883,10 @@ fn reports_across_orders_follow_due_time_then_creation_order() {
     assert_eq!((reports[0].cloid, reports[0].ts_local), (cloid(1), ms(250)));
     assert_eq!((reports[1].cloid, reports[1].ts_local), (cloid(0), ms(300)));
 
-    sim.on_market_event(&received(trade(350, "99", "0.2", Side::Sell), 500));
-    sim.on_market_event(&received(trade(360, "102", "0.2", Side::Buy), 500));
+    sim.on_market_event(&received(trade(350, "99", "0.2", Side::Sell), 500))
+        .unwrap();
+    sim.on_market_event(&received(trade(360, "102", "0.2", Side::Buy), 500))
+        .unwrap();
     // Both receipt floors give delivery 500. Creation order breaks this tie.
     let reports = poll(&mut sim, 500);
     assert_eq!(
@@ -863,7 +899,7 @@ fn reports_across_orders_follow_due_time_then_creation_order() {
 fn poll_releases_determined_reports_without_proving_pending_actions() {
     let mut sim = sim(100, 50);
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "1")]);
-    sim.on_market_event(&bbo(101, "100", "101"));
+    sim.on_market_event(&bbo(101, "100", "101")).unwrap();
     sim.submit(ms(110), &[cancel(0)]);
     // Acceptance A = 100 was proved by E = 101 and is due at 150.
     // Cancel S = 110 + 100 = 210 has no later evidence, even at local 1000.
@@ -908,19 +944,20 @@ fn gaps_diffs_and_snapshots_supply_no_action_evidence() {
             ts_exch: ms(time),
             ts_local: ms(time),
             kind,
-        });
+        })
+        .unwrap();
     }
     // Every E is positive, but only BBO/trade is evidence for A = 0.
     assert!(poll(&mut sim, 3).is_empty());
     assert_eq!(sim.pending_actions(), 1);
-    sim.on_market_event(&bbo(4, "100", "101"));
+    sim.on_market_event(&bbo(4, "100", "101")).unwrap();
     assert_eq!(kinds(&mut sim, 4), [(0, accepted(1))]);
 }
 
 #[test]
 fn snapshots_follow_quote_recency_without_proving_an_action() {
     let mut sim = sim(0, 0);
-    sim.on_market_event(&bbo(10, "100", "101"));
+    sim.on_market_event(&bbo(10, "100", "101")).unwrap();
     sim.submit(ms(10), &[place(0, Side::Buy, "100.5", "1")]);
     let snapshot = |exchange_ms, received_ms, ask| MarketEvent {
         instrument: MON,
@@ -935,16 +972,16 @@ fn snapshots_follow_quote_recency_without_proving_an_action() {
             }],
         }),
     };
-    sim.on_market_event(&snapshot(9, 11, "99"));
+    sim.on_market_event(&snapshot(9, 11, "99")).unwrap();
     assert!(poll(&mut sim, 11).is_empty());
-    sim.on_market_event(&bbo(12, "100", "101"));
+    sim.on_market_event(&bbo(12, "100", "101")).unwrap();
     // The E = 9 snapshot cannot replace E = 10 ask 101, so 100.5 passes.
     assert_eq!(kinds(&mut sim, 12), [(0, accepted(1))]);
 
     sim.submit(ms(12), &[place(1, Side::Buy, "100.5", "1")]);
-    sim.on_market_event(&snapshot(12, 13, "100"));
+    sim.on_market_event(&snapshot(12, 13, "100")).unwrap();
     assert!(poll(&mut sim, 13).is_empty());
-    sim.on_market_event(&bbo(14, "100", "101"));
+    sim.on_market_event(&bbo(14, "100", "101")).unwrap();
     // The equal-E snapshot replaces the earlier BBO by receipt order.
     // A = 12, saved ask 100, bid 100.5 >= 100 is rejected at proof E = 14.
     assert_eq!(
@@ -953,9 +990,9 @@ fn snapshots_follow_quote_recency_without_proving_an_action() {
     );
 
     sim.submit(ms(15), &[place(2, Side::Buy, "100.5", "1")]);
-    sim.on_market_event(&snapshot(16, 16, "100"));
+    sim.on_market_event(&snapshot(16, 16, "100")).unwrap();
     assert!(poll(&mut sim, 16).is_empty());
-    sim.on_market_event(&bbo(17, "100", "101"));
+    sim.on_market_event(&bbo(17, "100", "101")).unwrap();
     // The snapshot at E=16>A=15 updates the ask to 100 but proves no
     // action. The BBO at E=17 proves the bid against that stored ask.
     assert_eq!(
@@ -970,7 +1007,7 @@ fn evidence_from_another_instrument_proves_actions_globally() {
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "1")]);
     let mut proof = bbo(11, "50", "51");
     proof.instrument = JUP;
-    sim.on_market_event(&proof);
+    sim.on_market_event(&proof).unwrap();
     // A = 10, any qualifying E = 11 proves it. JUP quotes cannot cross MON.
     assert_eq!(kinds(&mut sim, 11), [(0, accepted(1))]);
 }
@@ -979,17 +1016,18 @@ fn evidence_from_another_instrument_proves_actions_globally() {
 fn equal_time_cancel_boundary_trade_faces_the_previously_resting_order() {
     let mut sim = sim(10, 0);
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "1")]);
-    sim.on_market_event(&bbo(11, "100", "101"));
+    sim.on_market_event(&bbo(11, "100", "101")).unwrap();
     poll(&mut sim, 11);
     sim.submit(ms(20), &[cancel(0)]);
-    sim.on_market_event(&trade(30, "99", "0.4", Side::Sell));
+    sim.on_market_event(&trade(30, "99", "0.4", Side::Sell))
+        .unwrap();
     // Cancel S = 20 + 10 = 30. E = S leaves cancel pending, and
     // the old A = 10 order fills min(1, 0.4) = 0.4 at E = 30.
     let reports = poll(&mut sim, 30);
     assert_eq!(reports.len(), 1);
     assert_eq!(filled(reports[0].kind).qty, qty("0.4"));
     assert_eq!(sim.pending_actions(), 1);
-    sim.on_market_event(&bbo(31, "100", "101"));
+    sim.on_market_event(&bbo(31, "100", "101")).unwrap();
     assert_eq!(kinds(&mut sim, 31), [(0, canceled())]);
     assert_eq!(
         sim.late_print_misses(),
@@ -1004,14 +1042,17 @@ fn equal_time_cancel_boundary_trade_faces_the_previously_resting_order() {
 fn a_late_print_after_cancel_counts_the_saved_remainder_without_a_fill() {
     let mut sim = sim(10, 0);
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "1")]);
-    sim.on_market_event(&bbo(11, "100", "101"));
+    sim.on_market_event(&bbo(11, "100", "101")).unwrap();
     poll(&mut sim, 11);
-    sim.on_market_event(&trade(15, "99", "0.6", Side::Sell));
+    sim.on_market_event(&trade(15, "99", "0.6", Side::Sell))
+        .unwrap();
     assert_eq!(filled(poll(&mut sim, 15)[0].kind).qty, qty("0.6"));
     sim.submit(ms(20), &[cancel(0)]);
-    sim.on_market_event(&received(bbo(31, "100", "101"), 40));
+    sim.on_market_event(&received(bbo(31, "100", "101"), 40))
+        .unwrap();
     assert_eq!(kinds(&mut sim, 40), [(0, canceled())]);
-    sim.on_market_event(&received(trade(25, "99", "0.6", Side::Sell), 50));
+    sim.on_market_event(&received(trade(25, "99", "0.6", Side::Sell), 50))
+        .unwrap();
     // A = 10 < E = 25 <= S = 30. Saved open size is 1 - 0.6 = 0.4,
     // so the missed allocation is min(0.6, 0.4) = 0.4, one trade.
     assert_eq!(
@@ -1023,7 +1064,7 @@ fn a_late_print_after_cancel_counts_the_saved_remainder_without_a_fill() {
     );
     assert!(poll(&mut sim, 50).is_empty());
     sim.submit(ms(50), &[cancel(0)]);
-    sim.on_market_event(&bbo(61, "100", "101"));
+    sim.on_market_event(&bbo(61, "100", "101")).unwrap();
     assert_eq!(
         kinds(&mut sim, 61),
         [(
@@ -1039,7 +1080,7 @@ fn a_late_print_after_cancel_counts_the_saved_remainder_without_a_fill() {
 fn a_late_print_after_modify_counts_only_the_old_version() {
     let mut sim = sim(10, 0);
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "0.4")]);
-    sim.on_market_event(&bbo(11, "100", "101"));
+    sim.on_market_event(&bbo(11, "100", "101")).unwrap();
     poll(&mut sim, 11);
     sim.submit(
         ms(20),
@@ -1050,7 +1091,8 @@ fn a_late_print_after_modify_counts_only_the_old_version() {
             qty: qty("0.7"),
         }],
     );
-    sim.on_market_event(&received(bbo(31, "100", "101"), 40));
+    sim.on_market_event(&received(bbo(31, "100", "101"), 40))
+        .unwrap();
     assert_eq!(
         kinds(&mut sim, 40),
         [(
@@ -1061,7 +1103,8 @@ fn a_late_print_after_modify_counts_only_the_old_version() {
             }
         )]
     );
-    sim.on_market_event(&received(trade(25, "99", "0.6", Side::Sell), 50));
+    sim.on_market_event(&received(trade(25, "99", "0.6", Side::Sell), 50))
+        .unwrap();
     // Old A = 10 < E = 25 <= modify S = 30 gives min(0.4, 0.6) = 0.4.
     // New A = 30 > E = 25 is ineligible, and its bid 98 is below print 99.
     assert_eq!(
@@ -1072,7 +1115,8 @@ fn a_late_print_after_modify_counts_only_the_old_version() {
         }
     );
     assert!(poll(&mut sim, 50).is_empty());
-    sim.on_market_event(&received(trade(35, "97", "1", Side::Sell), 60));
+    sim.on_market_event(&received(trade(35, "97", "1", Side::Sell), 60))
+        .unwrap();
     // New A = 30 < E = 35 fills 0.7 at 98. Fee 98 * 0.7 * 0.00015 = 0.01029.
     let reports = poll(&mut sim, 60);
     assert_eq!(reports.len(), 1);
@@ -1096,12 +1140,14 @@ fn late_print_interval_excludes_start_and_includes_superseding_time() {
     {
         let mut sim = sim(10, 0);
         sim.submit(ms(0), &[place(0, Side::Buy, "100", "0.4")]);
-        sim.on_market_event(&bbo(11, "100", "101"));
+        sim.on_market_event(&bbo(11, "100", "101")).unwrap();
         poll(&mut sim, 11);
         sim.submit(ms(20), &[cancel(0)]);
-        sim.on_market_event(&received(bbo(31, "100", "101"), 40));
+        sim.on_market_event(&received(bbo(31, "100", "101"), 40))
+            .unwrap();
         poll(&mut sim, 40);
-        sim.on_market_event(&received(trade(exchange_ms, "99", "0.6", Side::Sell), 50));
+        sim.on_market_event(&received(trade(exchange_ms, "99", "0.6", Side::Sell), 50))
+            .unwrap();
         // The saved interval is 10 < E <= 30. E = 10 and 31 allocate 0.
         // E = S = 30 allocates min(saved 0.4, print 0.6) = 0.4 exactly once.
         assert_eq!(
@@ -1133,7 +1179,8 @@ fn late_prints_share_one_budget_best_price_then_oldest_and_exhaust_saved_sizes()
     sim.submit(ms(20), &[cancel(2)]);
     prove_and_poll(&mut sim, 20);
 
-    sim.on_market_event(&received(trade(5, "99", "0.5", Side::Sell), 30));
+    sim.on_market_event(&received(trade(5, "99", "0.5", Side::Sell), 30))
+        .unwrap();
     // Best bids 101 first, older id 1 takes 0.2, then id 2 takes 0.3.
     // One print contributes 0.5 total. Saved remainders are 0.3, 0, 0.1.
     assert_eq!(
@@ -1143,7 +1190,8 @@ fn late_prints_share_one_budget_best_price_then_oldest_and_exhaust_saved_sizes()
             qty: qty("0.5")
         }
     );
-    sim.on_market_event(&received(trade(15, "100.5", "0.5", Side::Sell), 31));
+    sim.on_market_event(&received(trade(15, "100.5", "0.5", Side::Sell), 31))
+        .unwrap();
     // Only id 2 has S >= E = 15. It contributes its last 0.1, total 0.6.
     assert_eq!(
         sim.late_print_misses(),
@@ -1152,7 +1200,8 @@ fn late_prints_share_one_budget_best_price_then_oldest_and_exhaust_saved_sizes()
             qty: qty("0.6")
         }
     );
-    sim.on_market_event(&received(trade(5, "99", "1", Side::Sell), 32));
+    sim.on_market_event(&received(trade(5, "99", "1", Side::Sell), 32))
+        .unwrap();
     // Only id 0 has quantity left. min(1, 0.3) = 0.3, total 0.9.
     assert_eq!(
         sim.late_print_misses(),
@@ -1161,7 +1210,8 @@ fn late_prints_share_one_budget_best_price_then_oldest_and_exhaust_saved_sizes()
             qty: qty("0.9")
         }
     );
-    sim.on_market_event(&received(trade(5, "99", "1", Side::Sell), 33));
+    sim.on_market_event(&received(trade(5, "99", "1", Side::Sell), 33))
+        .unwrap();
     assert_eq!(
         sim.late_print_misses(),
         LatePrintMisses {
@@ -1182,7 +1232,8 @@ fn consecutive_late_prints_claim_only_the_saved_remainder() {
     for (received_ms, expected_trades, expected_qty) in
         [(20, 1, "0.3"), (21, 2, "0.4"), (22, 2, "0.4")]
     {
-        sim.on_market_event(&received(trade(5, "99", "0.3", Side::Sell), received_ms));
+        sim.on_market_event(&received(trade(5, "99", "0.3", Side::Sell), received_ms))
+            .unwrap();
         // Allocations are min(0.3, 0.4) = 0.3, then min(0.3, 0.1) = 0.1,
         // then zero. The same saved 0.4 can be claimed only once in total.
         assert_eq!(
@@ -1219,9 +1270,12 @@ fn cancel_all_preserves_missed_versions_across_a_gap() {
         ts_exch: ms(100),
         ts_local: ms(100),
         kind: MarketEventKind::FeedGap,
-    });
-    sim.on_market_event(&received(trade(5, "99", "0.6", Side::Sell), 200));
-    sim.on_market_event(&received(trade(5, "102", "0.6", Side::Buy), 201));
+    })
+    .unwrap();
+    sim.on_market_event(&received(trade(5, "99", "0.6", Side::Sell), 200))
+        .unwrap();
+    sim.on_market_event(&received(trade(5, "102", "0.6", Side::Buy), 201))
+        .unwrap();
     // Each side has one saved 0.4. Opposite prints allocate 0.4 + 0.4 = 0.8.
     assert_eq!(
         sim.late_print_misses(),
@@ -1242,9 +1296,11 @@ fn missed_print_matching_requires_instrument_side_and_strict_trade_through() {
     prove_and_poll(&mut sim, 10);
     let mut other = received(trade(5, "99", "0.6", Side::Sell), 20);
     other.instrument = JUP;
-    sim.on_market_event(&other);
-    sim.on_market_event(&received(trade(5, "99", "0.6", Side::Buy), 21));
-    sim.on_market_event(&received(trade(5, "100", "0.6", Side::Sell), 22));
+    sim.on_market_event(&other).unwrap();
+    sim.on_market_event(&received(trade(5, "99", "0.6", Side::Buy), 21))
+        .unwrap();
+    sim.on_market_event(&received(trade(5, "100", "0.6", Side::Sell), 22))
+        .unwrap();
     // Wrong instrument, same-side aggressor and price equality allocate zero.
     assert_eq!(
         sim.late_print_misses(),
@@ -1253,7 +1309,8 @@ fn missed_print_matching_requires_instrument_side_and_strict_trade_through() {
             qty: Qty::ZERO
         }
     );
-    sim.on_market_event(&received(trade(5, "99", "0.6", Side::Sell), 23));
+    sim.on_market_event(&received(trade(5, "99", "0.6", Side::Sell), 23))
+        .unwrap();
     assert_eq!(
         sim.late_print_misses(),
         LatePrintMisses {
@@ -1268,7 +1325,7 @@ fn missed_print_matching_requires_instrument_side_and_strict_trade_through() {
 fn a_rejected_modify_keeps_the_original_effect_time_and_saves_no_version() {
     let mut sim = sim(10, 0);
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "0.4")]);
-    sim.on_market_event(&bbo(11, "100", "101"));
+    sim.on_market_event(&bbo(11, "100", "101")).unwrap();
     poll(&mut sim, 11);
     sim.submit(
         ms(20),
@@ -1279,7 +1336,8 @@ fn a_rejected_modify_keeps_the_original_effect_time_and_saves_no_version() {
             qty: qty("0.4"),
         }],
     );
-    sim.on_market_event(&received(bbo(31, "100", "101"), 40));
+    sim.on_market_event(&received(bbo(31, "100", "101"), 40))
+        .unwrap();
     assert_eq!(
         kinds(&mut sim, 40),
         [(
@@ -1289,7 +1347,8 @@ fn a_rejected_modify_keeps_the_original_effect_time_and_saves_no_version() {
             }
         )]
     );
-    sim.on_market_event(&received(trade(25, "99", "0.6", Side::Sell), 50));
+    sim.on_market_event(&received(trade(25, "99", "0.6", Side::Sell), 50))
+        .unwrap();
     // Rejection leaves A = 10. E = 25 fills min(0.4, 0.6) = 0.4 live,
     // and no superseded version exists to claim a missed allocation.
     assert_eq!(filled(poll(&mut sim, 50)[0].kind).qty, qty("0.4"));
@@ -1323,7 +1382,8 @@ fn modifying_a_price_preserves_the_existing_matching_priority() {
         }],
     );
     prove_and_poll(&mut sim, 10);
-    sim.on_market_event(&trade(20, "99", "1.5", Side::Sell));
+    sim.on_market_event(&trade(20, "99", "1.5", Side::Sell))
+        .unwrap();
     // Both bids are 100. Existing priority keeps id 0 first after modify,
     // so its 1 fills before id 1 takes the remaining 1.5 - 1 = 0.5.
     let reports = kinds(&mut sim, 20);
@@ -1336,7 +1396,7 @@ fn modifying_a_price_preserves_the_existing_matching_priority() {
 fn a_late_trade_cannot_fill_the_modified_version_even_through_its_price() {
     let mut sim = sim(10, 0);
     sim.submit(ms(0), &[place(0, Side::Buy, "100", "0.4")]);
-    sim.on_market_event(&bbo(11, "100", "101"));
+    sim.on_market_event(&bbo(11, "100", "101")).unwrap();
     poll(&mut sim, 11);
     sim.submit(
         ms(20),
@@ -1347,10 +1407,13 @@ fn a_late_trade_cannot_fill_the_modified_version_even_through_its_price() {
             qty: qty("0.7"),
         }],
     );
-    sim.on_market_event(&received(bbo(31, "100", "101"), 40));
+    sim.on_market_event(&received(bbo(31, "100", "101"), 40))
+        .unwrap();
     poll(&mut sim, 40);
-    sim.on_market_event(&received(trade(25, "98", "0.2", Side::Sell), 50));
-    sim.on_market_event(&received(trade(30, "98", "0.2", Side::Sell), 51));
+    sim.on_market_event(&received(trade(25, "98", "0.2", Side::Sell), 50))
+        .unwrap();
+    sim.on_market_event(&received(trade(30, "98", "0.2", Side::Sell), 51))
+        .unwrap();
     // Both prices 100 and 99 are through the print 98, but the new version
     // has A = 30. E = 25 and E = 30 are ineligible for a real fill.
     // The old interval 10 < E <= 30 receives 0.2 + 0.2 = 0.4 missed units.
@@ -1362,7 +1425,8 @@ fn a_late_trade_cannot_fill_the_modified_version_even_through_its_price() {
             qty: qty("0.4")
         }
     );
-    sim.on_market_event(&received(trade(31, "98", "1", Side::Sell), 52));
+    sim.on_market_event(&received(trade(31, "98", "1", Side::Sell), 52))
+        .unwrap();
     // New A = 30 < E = 31 now fills its untouched min(0.7, 1) = 0.7.
     let reports = poll(&mut sim, 52);
     assert_eq!(reports.len(), 1);
@@ -1422,7 +1486,8 @@ fn same_time_modifications_preserve_the_earlier_nonempty_saved_interval() {
             (0, canceled()),
         ]
     );
-    sim.on_market_event(&received(trade(5, "99.5", "1", Side::Sell), 20));
+    sim.on_market_event(&received(trade(5, "99.5", "1", Side::Sell), 20))
+        .unwrap();
     // The original bid 100 contributes min(0.4, 1) = 0.4 exactly once.
     assert_eq!(
         sim.late_print_misses(),
@@ -1433,3 +1498,5 @@ fn same_time_modifications_preserve_the_earlier_nonempty_saved_interval() {
     );
     assert!(poll(&mut sim, 20).is_empty());
 }
+
+mod dated_rules;
