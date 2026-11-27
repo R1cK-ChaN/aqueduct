@@ -1,64 +1,32 @@
-<div align="center">
-
 # Aqueduct
 
-**Open infrastructure for market making on order-book DEXs.**
-
-Record the market. Replay it faithfully. Rehearse on a live feed.
+[English](README.md) · [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/R1cK-ChaN/aqueduct/actions/workflows/ci.yml/badge.svg)](https://github.com/R1cK-ChaN/aqueduct/actions/workflows/ci.yml)
 [![Licence: MIT OR Apache-2.0](https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue.svg)](#licence)
 
-**English** · [简体中文](README.zh-CN.md)
+Aqueduct is the plumbing for market making on order-book DEXs. It records
+market data, replays it against a simulated venue, and runs the same
+strategy as a paper session on the live feed. It supports Hyperliquid
+perpetuals today.
 
-</div>
+## Why this is open
 
-## Why
+More market makers mean tighter spreads, and everyone who trades gets a
+better price. To become one you first need a recorder, a replay that gives
+the same answer twice, and a paper mode. That is a lot of work, and it has
+little to do with your strategy. We did that work and opened it, so you, or
+your coding agent, can start at the strategy. The name says the same thing:
+an aqueduct carries water, and the water here is liquidity.
 
-More market makers mean tighter spreads and deeper books, and everyone
-who trades gets a better price. What holds a new maker back is rarely
-the idea. It is the infrastructure: recording the market, replaying it
-faithfully, and rehearsing on a live feed.
+## Try it
 
-Aqueduct builds that part in the open. A person or an AI agent can start
-at the strategy. It begins with Hyperliquid perpetuals and is meant to
-reach other order-book DEXs.
+You need Linux, Rust through [rustup](https://rustup.rs) (the toolchain
+version is pinned) and `zstd`.
 
-## How it fits together
-
-```mermaid
-flowchart LR
-    feed([Public market-data feed])
-    rec[hl-recorder<br/>raw recordings]
-    load[hl-loader<br/>ClickHouse and daily checks]
-    bt[hl-backtest<br/>replay on a simulated venue]
-    paper[hl-live paper<br/>live feed, simulated venue]
-    sess[(session file)]
-    check[offline check<br/>field by field]
-    strat{{Your strategy}}
-
-    feed --> rec
-    rec --> load
-    rec --> bt
-    feed --> paper
-    strat -.-> bt
-    strat -.-> paper
-    bt --> sess
-    paper --> sess
-    sess --> check
-```
-
-The same strategy code runs in the backtest and in the paper session.
-Both write a session file, and an offline replay checks it field by field.
-
-## Try it in two minutes
-
-You need Linux, Rust (the pinned toolchain installs itself through
-[rustup](https://rustup.rs)) and the `zstd` command.
-
-The repository carries a 60-second recording of one market as a test
-fixture. Compress it, run the example quoter against it, then let the
-replay check the session it wrote.
+The repository includes a 60-second recording of one market, kept as a test
+fixture. These three commands compress it, run the example quoter on it, and
+verify the session that run wrote.
 
 ```bash
 zstd -q -o /tmp/sample.hlrec.zst crates/hl-codec/tests/fixtures/hl_ws_pons_20261124.hlrec
@@ -75,40 +43,38 @@ cargo run --release -p hl-backtest -- run \
 cargo run --release -p hl-backtest -- run --check-session /tmp/session.jsonl
 ```
 
-The second command prints a JSON summary: the events it read, the orders
-it placed and modified, the fills and the account. The third prints
-`session matches` and the number of rows. Sixty seconds is a smoke test
-and says nothing about a strategy. [Usage](docs/usage.md) explains every
-flag and field, how to record your own data and how to run a paper
-session.
+The second command prints a JSON summary of the run. The third prints
+`session matches` and a row count. This shows that the pipeline works. It
+shows nothing about a strategy: it is sixty seconds of one market. The first
+two commands refuse to overwrite a file, so delete `/tmp/sample.hlrec.zst`
+and `/tmp/session.jsonl` before you run them again.
 
-The first two commands do not overwrite a file. To run them again, remove
-`/tmp/sample.hlrec.zst` and `/tmp/session.jsonl`.
+[docs/usage.md](docs/usage.md) has every flag and output field, and how to
+record your own data and run a paper session.
 
-## What Aqueduct builds, and what is yours
+## The pipeline
 
-Aqueduct builds:
+| Step | Program | Input | Output |
+| --- | --- | --- | --- |
+| Record | `hl-recorder` | a public market-data feed | raw recording files |
+| Store and check | `hl-loader` | recordings and the official archives | ClickHouse tables, daily data-quality checks |
+| Backtest | `hl-backtest run` | recordings and your strategy | a summary and a session file |
+| Paper | `hl-live paper` | the live feed and your strategy | its own recording and a session file |
+| Verify | `hl-backtest run --check-session` | a session file and its recordings | a match, or the first field that differs |
 
-- a recorder for public market-data feeds and a documented raw format;
-- decoders, an L2 book, and loading into ClickHouse with daily
-  data-quality checks;
-- a simulated venue with stated timing rules, a deterministic replay and
-  a backtest command;
-- paper sessions on the live feed, written to a session file that an
-  offline replay checks field by field;
-- a register of venue facts, each with its source and the date it was
-  checked.
+Your strategy is the same code in the backtest and in the paper session.
 
-Yours:
+## What is not here
 
-- the strategy. It implements one trait, does no IO, and runs unchanged
-  in backtest and paper;
-- the research: which runs to make and how to judge them;
-- every trading decision. Nothing here places an order on a venue.
+- Strategies. There is one example, `FixedSpreadQuoter`, so that the
+  pipeline has something to run.
+- A research method. Which runs to make and how to judge them is up to you.
+- Anything that sends an order to a venue. The order gateway is an
+  interface, and what stands behind it today is a simulator.
+- Results.
 
-The repository ships one example quoter and no results. A simulator
-cannot know everything about a live market. The assumptions this one
-makes, and where each would have to be measured, are listed under
+The simulator is a model. What it assumes, and what would have to be
+measured on a live account to test each assumption, is listed under
 "Limits against live trading" in
 [RFC 0008 D8](docs/rfc/0008-paper-trading.md#d8-replay-the-recording-and-compare-decisions-in-order).
 
@@ -127,19 +93,19 @@ makes, and where each would have to be measured, are listed under
 | Live order gateway | `hl-gateway` | Interface only |
 | Risk limits and watchdog | `hl-risk`, `hl-watchdog` | Not started |
 
-`FixedSpreadQuoter` is the only strategy included.
+## Rules the code keeps
 
-## For people and for agents
+- The same inputs give the same output, byte for byte. Nothing a backtest
+  result depends on reads the wall clock or uses unseeded randomness.
+- A session can be replayed and compared field by field, with
+  `hl-backtest run --check-session`.
+- A strategy does no IO. It receives events and returns actions.
+- A statement about how a venue behaves cites an entry in the venue
+  register, and the entry has a source and the date it was checked.
 
-The same rules serve a human reader and a coding agent:
-
-- the same inputs give the same outputs, so a result can be reproduced
-  and compared byte for byte;
-- `hl-backtest run --check-session` replays a session and reports the
-  first field that differs;
-- a statement about a venue cites its register entry instead of
-  restating it;
-- [AGENTS.md](AGENTS.md) holds the working rules for both.
+These rules are what let a coding agent work here as well as a person: it
+can check its own result. The working rules for both are in
+[AGENTS.md](AGENTS.md).
 
 ## Documentation
 
@@ -151,20 +117,18 @@ The same rules serve a human reader and a coding agent:
 - [Venue register](docs/venues/README.md): venue rules and measurements,
   each with a source.
 
-## Roadmap and contributing
+## Roadmap
 
-- **Venues.** The code supports Hyperliquid today. Lighter is planned
-  next. Crates carry the `hl-` prefix because they were written for one
-  venue; the names will be revisited when the second venue is added.
-- **Learning material.** A `learn/` directory is planned, from what a
-  maker does to why a backtest can mislead.
-- **Contributions** are welcome. Read [AGENTS.md](AGENTS.md) first. A
-  change to a shared interface starts as an RFC in `docs/rfc/`.
+- Lighter is the next venue. Crates are named `hl-` because they were
+  written for one venue. They get new names when the second one arrives.
+- Dated price and size rules in the simulator.
+- A public dataset of recordings.
+- A `learn/` directory: what a maker does, and the ways a backtest misleads.
 
-## The name
+## Contributing
 
-An aqueduct carries water to a city: built once, used by everyone. Here
-the water is liquidity and the channel is this infrastructure.
+Read [AGENTS.md](AGENTS.md) first. A change to a shared interface starts as
+an RFC in `docs/rfc/`. Issues and pull requests are in English.
 
 ## Licence
 
