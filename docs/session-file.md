@@ -52,10 +52,10 @@ reports and timers follow RFC 0008 D3.
 | `sim` | Object starting with text field `model`, followed by the simulator's ordered parameter pairs. Every value is a string. |
 | `rules` | Version 2 only. Nonempty array containing the complete rule history for `instrument`, in strictly increasing start-time order. |
 
-Version 1 ends at `sim`. The backtest CLI and the paper driver currently
-write this layout. When a run uses dated rules, the writer places `rules`
-immediately after `sim` and writes version 2. Both layouts use the same four
-simulator parameters and the same work and boundary rows.
+Both backtest and paper write version 1 when run without a rules file. The
+`start` row ends at `sim`. With a rules file, both write version 2 with the
+selected coin's full `rules` array immediately after `sim`. Both layouts use
+the same four simulator parameters and the same work and boundary rows.
 
 Each version object contains exactly these three fields in order.
 

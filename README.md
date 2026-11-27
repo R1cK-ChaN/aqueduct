@@ -88,7 +88,7 @@ measured on a live account to test each assumption, is listed under
 | Simulated venue | `hl-sim` | Working, minimal: post-only orders, filled by a trade strictly through the price |
 | Replay and backtest | `hl-run`, `hl-backtest` | Working, one coin per run |
 | Paper session | `hl-live` | Working |
-| Dated price and size rules | `hl-rules` | Written, not yet applied by the simulator. [RFC 0009 D7](docs/rfc/0009-instrument-identity.md#d7-supply-dated-rules-to-backtest-and-paper-runs) |
+| Dated price and size rules | `hl-rules` | Backtest and paper can load a rules file to check new and modified orders when they take effect. [Usage](docs/usage.md#dated-price-and-size-rules) · [RFC 0009 D7](docs/rfc/0009-instrument-identity.md#d7-supply-dated-rules-to-backtest-and-paper-runs) |
 | Public recording dataset | `hl-publish` | Designed, not yet available. [RFC 0010 D8](docs/rfc/0010-public-recording-dataset.md#d8-order-of-later-issues) |
 | Live order gateway | `hl-gateway` | Interface only |
 | Risk limits and watchdog | `hl-risk`, `hl-watchdog` | Not started |
@@ -121,7 +121,7 @@ can check its own result. The working rules for both are in
 
 - Lighter is the next venue. Crates are named `hl-` because they were
   written for one venue. They get new names when the second one arrives.
-- Dated price and size rules in the simulator.
+- Import rules from a saved perpetual `meta` response with a supplied start time.
 - A public dataset of recordings.
 - A `learn/` directory: what a maker does, and the ways a backtest misleads.
 

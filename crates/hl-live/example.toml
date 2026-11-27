@@ -1,6 +1,7 @@
 out_dir = "paper-runs"
 network = "mainnet"
 coin = "BTC"
+# rules_file = "rules.json"  # Relative to this config file.
 queue_capacity = 65536
 zstd_level = 3
 strategy_name = "fixed_spread"
