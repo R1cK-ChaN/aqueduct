@@ -4,6 +4,7 @@
 //! lines in memory. The caller owns their storage and the input-file hashes.
 
 use hl_codec::hyperliquid::Network;
+use hl_rules::{RuleBook, RuleError, RuleHistory, RuleVersion};
 use hl_sim::LatePrintMisses;
 use hl_types::{
     CancelReason, InstrumentId, Liquidity, OrderAction, OrderEvent, OrderEventKind, RejectReason,
@@ -15,14 +16,14 @@ use crate::PendingAtEnd;
 use crate::pnl::PnlSummary;
 use crate::recording::{EventOrigin, RawPosition};
 
-/// Run identity and fully materialized component parameters.
+/// Run identity, component parameters and dated rules for the selected instrument.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionStart {
     /// Full commit hash of the executable's build, or `unknown`.
     pub commit: String,
     /// Whether tracked files differed from that commit at build time.
     pub dirty: bool,
-    /// Driver name, currently `backtest` for offline replay.
+    /// Driver name, either `backtest` or `paper`.
     pub driver: String,
     /// Network used for instrument identity.
     pub network: Network,
@@ -44,6 +45,21 @@ pub struct SessionStart {
     pub sim_model: String,
     /// Simulator-owned parameters in their declared order.
     pub sim: Vec<(String, String)>,
+    /// This instrument's rule versions in increasing start order. Empty for a run without rules.
+    pub rules: Vec<RuleVersion>,
+}
+
+impl SessionStart {
+    /// Builds the instrument's rule book, returning `None` when the run has no rules.
+    pub fn rule_book(&self) -> Result<Option<RuleBook>, RuleError> {
+        if self.rules.is_empty() {
+            return Ok(None);
+        }
+        let history = RuleHistory::new(self.rules.clone())?;
+        let mut book = RuleBook::new();
+        book.insert(self.instrument, history)?;
+        Ok(Some(book))
+    }
 }
 
 /// One sealed raw file in input order.
@@ -125,11 +141,12 @@ pub struct Session {
 }
 
 impl Session {
-    /// Starts a version-one session and encodes its `start` row.
+    /// Encodes a version-two `start` row when the run has rules, or version one otherwise.
     pub fn new(start: &SessionStart) -> Self {
         let mut row = Object::new();
         row.field("kind", json!("start"));
-        row.field("schema_version", json!(1));
+        let schema_version = if start.rules.is_empty() { 1 } else { 2 };
+        row.field("schema_version", json!(schema_version));
         row.field("commit", json!(start.commit));
         row.field("dirty", json!(start.dirty));
         row.field("driver", json!(start.driver));
@@ -154,6 +171,9 @@ impl Session {
             sim.field(name, json!(value));
         }
         row.object("sim", sim);
+        if !start.rules.is_empty() {
+            row.objects("rules", start.rules.iter().map(rule_version));
+        }
         Self {
             lines: vec![row.line()],
             next_seq: 0,
@@ -366,23 +386,32 @@ fn raw_position(position: RawPosition) -> Object {
     object
 }
 
+fn rule_version(version: &RuleVersion) -> Object {
+    let mut object = Object::new();
+    object.field(
+        "effective_from",
+        json!(version.effective_from().as_nanos().to_string()),
+    );
+    object.field("sz_decimals", json!(version.sz_decimals()));
+    object.field("asset_id", json!(version.asset_id().to_string()));
+    object
+}
+
 fn raw_extent(row: &mut Object, last_raw: Option<RawPosition>, manifest: &[ManifestEntry]) {
     match last_raw {
         Some(position) => row.object("last_raw", raw_position(position)),
         None => row.field("last_raw", Value::Null),
     }
-    let entries = manifest
-        .iter()
-        .map(|file| {
+    row.objects(
+        "manifest",
+        manifest.iter().map(|file| {
             let mut object = Object::new();
             object.field("path", json!(file.path));
             object.field("file_seq", json!(file.file_seq.map(|seq| seq.to_string())));
             object.field("sha256", json!(file.sha256));
-            object.finish()
-        })
-        .collect::<Vec<_>>()
-        .join(",");
-    row.encoded("manifest", &format!("[{entries}]"));
+            object
+        }),
+    );
 }
 
 fn misses(misses: LatePrintMisses) -> Object {
@@ -435,6 +464,11 @@ impl Object {
         self.encoded(name, &value.finish());
     }
 
+    fn objects(&mut self, name: &str, values: impl Iterator<Item = Object>) {
+        let entries = values.map(Object::finish).collect::<Vec<_>>().join(",");
+        self.encoded(name, &format!("[{entries}]"));
+    }
+
     fn encoded(&mut self, name: &str, value: &str) {
         if self.text.len() > 1 {
             self.text.push(',');
@@ -459,6 +493,63 @@ impl Object {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn start_row_bytes_with_and_without_dated_rules() {
+        let mut start = SessionStart {
+            commit: "1".repeat(40),
+            dirty: false,
+            driver: "backtest".into(),
+            network: Network::Testnet,
+            source: None,
+            coin: "SYNTH".into(),
+            instrument: hl_codec::hyperliquid::instrument_id(Network::Testnet, "SYNTH"),
+            process_start_wall_ns: None,
+            strategy_name: "fixed_spread".into(),
+            strategy_tag: 1,
+            strategy: vec![
+                ("half_spread_quote_per_base".into(), "1".into()),
+                ("qty_base".into(), "1.001".into()),
+            ],
+            sim_model: hl_sim::MODEL_NAME.into(),
+            sim: hl_sim::SimConfig {
+                order_latency: std::time::Duration::ZERO,
+                report_latency: std::time::Duration::ZERO,
+                maker_fee: hl_types::FeeRate::ZERO,
+                min_order_notional: hl_types::Usd::ZERO,
+            }
+            .parameters(),
+            rules: Vec::new(),
+        };
+        assert_eq!(
+            Session::new(&start).lines(),
+            [concat!(
+                r#"{"kind":"start","schema_version":1,"commit":"1111111111111111111111111111111111111111","dirty":false,"#,
+                r#""driver":"backtest","network":"testnet","source":null,"coin":"SYNTH","instrument":"3509668803","#,
+                r#""process_start_wall_ns":null,"strategy_name":"fixed_spread","strategy_tag":"1","#,
+                r#""strategy":{"half_spread_quote_per_base":"1","qty_base":"1.001"},"#,
+                r#""sim":{"model":"strict_trade_through","order_latency_ns":"0","report_latency_ns":"0","maker_fee_bps":"0","min_order_notional_usd":"0"}}"#,
+                "\n",
+            )]
+        );
+
+        start.rules = vec![
+            RuleVersion::new(Timestamp::from_nanos(100), 2, 17).expect("first version"),
+            RuleVersion::new(Timestamp::from_nanos(200), 3, 21).expect("second version"),
+        ];
+        assert_eq!(
+            Session::new(&start).lines(),
+            [concat!(
+                r#"{"kind":"start","schema_version":2,"commit":"1111111111111111111111111111111111111111","dirty":false,"#,
+                r#""driver":"backtest","network":"testnet","source":null,"coin":"SYNTH","instrument":"3509668803","#,
+                r#""process_start_wall_ns":null,"strategy_name":"fixed_spread","strategy_tag":"1","#,
+                r#""strategy":{"half_spread_quote_per_base":"1","qty_base":"1.001"},"#,
+                r#""sim":{"model":"strict_trade_through","order_latency_ns":"0","report_latency_ns":"0","maker_fee_bps":"0","min_order_notional_usd":"0"},"#,
+                r#""rules":[{"effective_from":"100","sz_decimals":2,"asset_id":"17"},{"effective_from":"200","sz_decimals":3,"asset_id":"21"}]}"#,
+                "\n",
+            )]
+        );
+    }
 
     #[test]
     fn next_midnight_is_strict_and_handles_epoch_and_range_edges() {

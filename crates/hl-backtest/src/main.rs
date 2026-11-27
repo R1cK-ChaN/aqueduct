@@ -202,13 +202,18 @@ fn components(
         return Err(format!("unknown sim.model {:?}", start.sim_model));
     }
     let strategy = FixedSpreadConfig::from_parameters(start.instrument, &start.strategy)?;
-    let sim = SimConfig::from_parameters(&start.sim)?;
-    validate_ranges(recording, strategy, sim)?;
+    let config = SimConfig::from_parameters(&start.sim)?;
+    validate_ranges(recording, strategy, config)?;
+    let (sim, rules) = match start.rule_book().map_err(|error| error.to_string())? {
+        Some(book) => (SimGateway::with_rules(config, book), start.rules.clone()),
+        None => (SimGateway::new(config), Vec::new()),
+    };
     Ok(ReplayComponents {
         host: StrategyHost::new(FixedSpreadQuoter::new(strategy), start.strategy_tag),
-        sim: SimGateway::new(sim),
+        sim,
         strategy_parameters: strategy.parameters(),
-        sim_parameters: sim.parameters(),
+        sim_parameters: config.parameters(),
+        rules,
     })
 }
 
@@ -245,6 +250,7 @@ fn run(mut command: Command<'_>) -> Result<(), Box<dyn std::error::Error>> {
             strategy: command.strategy.parameters(),
             sim_model: MODEL_NAME.into(),
             sim: command.sim.parameters(),
+            rules: Vec::new(),
         };
         let manifest = output::manifest(&recording, path)?;
         let (session, trace, pnl) =

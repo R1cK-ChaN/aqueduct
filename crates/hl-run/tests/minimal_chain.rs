@@ -864,6 +864,7 @@ fn session() -> Session {
         strategy: Vec::new(),
         sim_model: "strict_trade_through".to_owned(),
         sim: Vec::new(),
+        rules: Vec::new(),
     })
 }
 

@@ -5,6 +5,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use hl_codec::hyperliquid::{Network, instrument_id};
+use hl_rules::{RuleHistory, RuleVersion};
 use hl_run::IncrementalDriver;
 use hl_run::session::{ManifestEntry, Session, SessionStart, checkpoint_line, next_utc_midnight};
 use hl_sim::SimGateway;
@@ -34,6 +35,8 @@ pub struct ReplayComponents<S> {
     pub strategy_parameters: Vec<(String, String)>,
     /// Canonical parameter list returned by the reconstructed simulator config.
     pub sim_parameters: Vec<(String, String)>,
+    /// Dated versions installed in the simulator, in increasing start order.
+    pub rules: Vec<RuleVersion>,
 }
 
 /// The result of comparing every non-diagnostic row successfully.
@@ -176,10 +179,76 @@ fn parameters(
         .collect()
 }
 
-fn parse_start(row: &Value, order: &JsonOrder) -> Result<SessionStart, SessionError> {
-    if field(row, "schema_version", "start")?.as_u64() != Some(1) {
-        return Err(invalid("start", "schema_version", "expected version 1"));
+fn parse_rules(row: &Value, order: &JsonOrder) -> Result<Vec<RuleVersion>, SessionError> {
+    let entries = field(row, "rules", "start")?
+        .as_array()
+        .ok_or_else(|| invalid("start", "rules", "expected an array"))?;
+    let JsonOrder::Object(fields) = order else {
+        unreachable!("session rows are JSON objects")
+    };
+    let orders = match fields.as_slice() {
+        [.., (sim, _), (rules, JsonOrder::Array(orders))] if sim == "sim" && rules == "rules" => {
+            orders
+        }
+        _ => {
+            return Err(invalid(
+                "start",
+                "rules",
+                "expected the final field after sim",
+            ));
+        }
+    };
+
+    let mut versions = Vec::with_capacity(entries.len());
+    for (index, (entry, order)) in entries.iter().zip(orders).enumerate() {
+        let location = format!("start.rules[{index}]");
+        let JsonOrder::Object(fields) = order else {
+            return Err(SessionError(format!("{location}: expected an object")));
+        };
+        if fields.iter().map(|(key, _)| key.as_str()).ne([
+            "effective_from",
+            "sz_decimals",
+            "asset_id",
+        ]) {
+            return Err(SessionError(format!(
+                "{location}: expected the fields effective_from, sz_decimals, asset_id in that order"
+            )));
+        }
+        let effective_from = integer(&entry["effective_from"], &location, "effective_from")?;
+        let sz_decimals = entry["sz_decimals"]
+            .as_u64()
+            .and_then(|value| u8::try_from(value).ok())
+            .ok_or_else(|| {
+                invalid(
+                    &location,
+                    "sz_decimals",
+                    "expected an integer from 0 through 6",
+                )
+            })?;
+        let asset_id = integer(&entry["asset_id"], &location, "asset_id")?;
+        let version =
+            RuleVersion::new(Timestamp::from_nanos(effective_from), sz_decimals, asset_id)
+                .map_err(|error| SessionError(format!("{location}: {error}")))?;
+        versions.push(version);
     }
+    RuleHistory::new(versions.clone())
+        .map_err(|error| invalid("start", "rules", &error.to_string()))?;
+    Ok(versions)
+}
+
+fn parse_start(row: &Value, order: &JsonOrder) -> Result<SessionStart, SessionError> {
+    let rules = match field(row, "schema_version", "start")?.as_u64() {
+        Some(1) if row.get("rules").is_none() => Vec::new(),
+        Some(1) => return Err(invalid("start", "rules", "unexpected field in version 1")),
+        Some(2) => parse_rules(row, order)?,
+        _ => {
+            return Err(invalid(
+                "start",
+                "schema_version",
+                "expected version 1 or 2",
+            ));
+        }
+    };
     let network = Network::from_short_name(string_field(row, "network", "start")?)
         .ok_or_else(|| invalid("start", "network", "unknown network"))?;
     let source = match field(row, "source", "start")? {
@@ -214,6 +283,7 @@ fn parse_start(row: &Value, order: &JsonOrder) -> Result<SessionStart, SessionEr
         strategy: parameters(row, order, "strategy", None)?,
         sim_model: string_field(field(row, "sim", "start")?, "model", "start.sim")?.to_owned(),
         sim: parameters(row, order, "sim", Some("model"))?,
+        rules,
     })
 }
 
@@ -446,10 +516,10 @@ fn verify_midnights(
 /// Rebuild the session from verified raw files and compare every recorded field.
 ///
 /// `build` must identify the running binary. The factory selects components by
-/// name, rejects invalid parameters, and returns empty components plus their
-/// canonical parameter lists. It receives only the start parameters and decoded
-/// raw input, never the recorded decisions. All file hashes are checked before
-/// the factory is called. The first mismatch includes its row, field and values.
+/// name and returns fresh components, their canonical parameters and the
+/// rule versions installed in the simulator. It receives the validated start
+/// and decoded raw input after all file hashes have been checked. The first
+/// mismatch includes its row, field and values.
 pub fn check_session<S: Strategy>(
     path: &Path,
     build: &BuildIdentity,
@@ -620,9 +690,11 @@ pub fn check_session<S: Strategy>(
         mut sim,
         strategy_parameters,
         sim_parameters,
+        rules,
     } = factory(&start, &recording).map_err(SessionError)?;
     start.strategy = strategy_parameters;
     start.sim = sim_parameters;
+    start.rules = rules;
     compare_row(recorded.rows[0], &Session::new(&start).lines()[0])?;
 
     let manifest = ordered_manifest(&recording, recorded.manifest(), &paths, &hashes)?;
@@ -910,7 +982,10 @@ impl JsonCursor<'_> {
                     }
                     self.skip_space();
                     self.position += 1; // The validated colon.
-                    fields.push((name, self.order()?));
+                    let child = self
+                        .order()
+                        .map_err(|error| SessionError(format!("{name}: {error}")))?;
+                    fields.push((name, child));
                     self.skip_space();
                     if self.text.as_bytes()[self.position] == b',' {
                         self.position += 1;
@@ -960,6 +1035,6 @@ fn parse_json(text: &str, location: &str) -> Result<(Value, JsonOrder), SessionE
     }
     let order = JsonCursor { text, position: 0 }
         .order()
-        .map_err(|error| SessionError(format!("{location}: {error}")))?;
+        .map_err(|error| SessionError(format!("{location}: {}: {error}", row_location(&value))))?;
     Ok((value, order))
 }

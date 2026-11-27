@@ -89,6 +89,7 @@ fn run_paper_with_clock(
         strategy: config.strategy.parameters(),
         sim_model: MODEL_NAME.into(),
         sim: config.sim.parameters(),
+        rules: Vec::new(),
     };
     let mut capture = Capture::new(&directory, &config.source, config.zstd_level, &start)?;
     let mut session = Session::new(&start);

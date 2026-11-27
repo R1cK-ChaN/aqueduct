@@ -219,6 +219,7 @@ fn start() -> SessionStart {
         strategy: vec![],
         sim_model: "strict_trade_through".to_owned(),
         sim: sim().parameters(),
+        rules: Vec::new(),
     }
 }
 
