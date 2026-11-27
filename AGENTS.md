@@ -15,6 +15,7 @@ These rules apply to people and to coding agents.
 
 Code, comments, documentation, commit messages, issues and pull requests are
 written in English.
+`README.<language>.md` files are translations of `README.md` and change in the same pull request.
 
 ## Engineering rules
 

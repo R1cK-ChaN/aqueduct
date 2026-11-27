@@ -2,7 +2,8 @@
 
 | Document | What it owns |
 | --- | --- |
-| [README](../README.md) | Building, testing, running a backtest or paper session, and the directory layout |
+| [README](../README.md) · [Simplified Chinese](../README.zh-CN.md) | Project overview, status and a quickstart with the sample recording |
+| [Usage](usage.md) | Build and test commands, recording backtests, paper sessions, directory layout and conventions |
 | [AGENTS](../AGENTS.md) | Working rules for contributors |
 | [Architecture](ARCHITECTURE.md) | Crate responsibilities, dependency rules and data flow |
 | [RFCs](rfc/) | Interface and rule decisions with their reasons |

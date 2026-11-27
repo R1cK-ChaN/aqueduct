@@ -20,6 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check README translations
+        run: python3 -I tools/check_readme.py
+
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
 

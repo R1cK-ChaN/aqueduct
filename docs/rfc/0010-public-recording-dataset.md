@@ -323,7 +323,7 @@ infrastructure.
 [time]: 0006-event-and-time-model.md
 [paper]: 0008-paper-trading.md
 [session]: ../session-file.md
-[cli]: ../../README.md#run-a-recording-backtest
+[cli]: ../usage.md#run-a-recording-backtest
 [sample]: ../measurements/2026-11-24-recorder-feeds.md#results
 [hl-terms]: https://app.hyperliquid.xyz/terms
 [bn-terms]: https://www.binance.com/en/terms
