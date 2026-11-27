@@ -1,0 +1,27 @@
+# Public dataset v1, RFC 0010 D2 and D3.
+# Check from the repository root with hl-recorder check crates/hl-recorder/public-v1.toml.
+out_dir = "recordings-public"
+zstd_level = 3
+
+[[source]]
+name = "hl-public"
+send_policy = "hl-public-v1"
+url = "wss://api.hyperliquid.xyz/ws" # HL-40, HL-41
+ping_text = '{"method":"ping"}' # HL-43
+ping_interval_secs = 20 # HL-44
+symbols = [
+    "BTC", "ETH", "SOL", "HYPE", "XRP", "ZEC", "DOGE",
+    "SUI", "AAVE", "NEAR", "TAO", "PUMP", "XPL", "kPEPE",
+]
+subscribe_each = [
+    # HL-45, HL-47
+    '{"method":"subscribe","subscription":{"type":"l2","c":"{symbol}"}}',
+    '{"method":"subscribe","subscription":{"type":"bbo","coin":"{symbol}"}}',
+    '{"method":"subscribe","subscription":{"type":"trades","coin":"{symbol}"}}',
+    # HL-91
+    '{"method":"subscribe","subscription":{"type":"activeAssetCtx","coin":"{symbol}"}}',
+]
+subscribe_once = [
+    # HL-45, HL-92
+    '{"method":"subscribe","subscription":{"type":"fastAssetCtxs"}}',
+]

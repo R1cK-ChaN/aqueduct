@@ -1,0 +1,20 @@
+[package]
+name = "hl-backtest"
+description = "Recording file reader and command line for strategy replay."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+hl-types.workspace = true
+hl-strategy.workspace = true
+hl-run.workspace = true
+hl-sim.workspace = true
+hl-codec.workspace = true
+serde_json.workspace = true
+zstd.workspace = true
+
+[lints]
+workspace = true

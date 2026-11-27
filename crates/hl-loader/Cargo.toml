@@ -1,0 +1,24 @@
+[package]
+name = "hl-loader"
+description = "Backfill and incremental loading of raw files into ClickHouse."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+clickhouse.workspace = true
+data-encoding.workspace = true
+hl-book.workspace = true
+hl-codec.workspace = true
+hl-types.workspace = true
+lz4_flex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+zstd.workspace = true
+
+[lints]
+workspace = true

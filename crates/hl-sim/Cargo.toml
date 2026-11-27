@@ -1,0 +1,15 @@
+[package]
+name = "hl-sim"
+description = "Simulated venue: matching, queueing, latency and request limits."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+hl-types.workspace = true
+hl-gateway.workspace = true
+
+[lints]
+workspace = true

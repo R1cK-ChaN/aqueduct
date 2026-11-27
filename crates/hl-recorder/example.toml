@@ -1,0 +1,57 @@
+# From the repository root, check the subscriptions or start recording.
+#   hl-recorder check crates/hl-recorder/example.toml
+#   hl-recorder run crates/hl-recorder/example.toml
+# Recordings from this file include the bbo and trades frames hl-backtest replays.
+# The venue register entries are in docs/venues/.
+
+# Recordings are written under this directory, one sub-directory per source.
+out_dir = "recordings"
+
+# Frames waiting for the writer. When full, new frames are dropped and counted.
+queue_capacity = 65536
+
+# zstd level, 1 to 19.
+zstd_level = 3
+
+[[source]]
+name = "hl"
+url = "wss://api.hyperliquid.xyz/ws" # HL-40, HL-41
+stale_after_ms = 3000
+subscribe_pace_ms = 50
+ping_text = '{"method":"ping"}' # HL-43
+ping_interval_secs = 20 # HL-44
+symbols = ["BTC", "ETH"] # HL-55, HL-64
+# The recorder replaces {symbol} with each symbol in the list above.
+subscribe_each = [
+    # HL-45, HL-47
+    '{"method":"subscribe","subscription":{"type":"l2","c":"{symbol}"}}',
+    '{"method":"subscribe","subscription":{"type":"bbo","coin":"{symbol}"}}',
+    '{"method":"subscribe","subscription":{"type":"trades","coin":"{symbol}"}}',
+    # HL-91
+    '{"method":"subscribe","subscription":{"type":"activeAssetCtx","coin":"{symbol}"}}',
+]
+subscribe_once = [
+    # HL-45, HL-92
+    '{"method":"subscribe","subscription":{"type":"fastAssetCtxs"}}',
+]
+
+[[source]]
+name = "binance-public"
+url = "wss://fstream.binance.com/public/ws" # BN-6
+stale_after_ms = 5000
+subscribe_pace_ms = 250 # BN-1
+subscribe_once = [
+    # BN-8, BN-9, BN-11, BN-16
+    '{"method":"SUBSCRIBE","params":["btcusdt@depth5@100ms","ethusdt@depth5@100ms"],"id":2}',
+]
+
+[[source]]
+name = "binance-market"
+url = "wss://fstream.binance.com/market/ws" # BN-6, BN-7
+stale_after_ms = 15000 # BN-15
+subscribe_pace_ms = 250 # BN-1
+symbols = ["btcusdt", "ethusdt"] # BN-9
+subscribe_each = [
+    # BN-8, BN-12
+    '{"method":"SUBSCRIBE","params":["{symbol}@aggTrade"],"id":1}',
+]

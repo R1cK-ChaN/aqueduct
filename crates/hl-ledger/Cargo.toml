@@ -1,0 +1,14 @@
+[package]
+name = "hl-ledger"
+description = "Position, cash, reported fees and marked profit for one instrument, excluding funding."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+hl-types.workspace = true
+
+[lints]
+workspace = true

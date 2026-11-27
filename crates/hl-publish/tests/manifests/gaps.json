@@ -1,0 +1,113 @@
+{
+  "coins_covered": {
+    "BTC": [
+      "bbo"
+    ],
+    "ETH": [
+      "l2"
+    ],
+    "SOL": [
+      "activeAssetCtx"
+    ]
+  },
+  "coverage_ends": [
+    {
+      "coin": "SOL",
+      "end_utc": "2026-11-26T03:45:00Z"
+    }
+  ],
+  "dataset_version": "v1",
+  "day": "2026-11-26",
+  "expires": "2027-11-21",
+  "files": [
+    {
+      "file_seq": "1",
+      "path": "v1/hl-public/20261126/hl-public-20261126T00-1795651200000.hlrec.zst",
+      "previous_path": "v1/hl-public/20261125/hl-public-20261125T23-1795647600000.hlrec.zst",
+      "process_start_wall_ns": "1795647600000000000",
+      "sha256": "0cb202539ed65ee86f1d73698d0781ac5e7e16c08f688672dd0dfa8e19a87e84",
+      "size_bytes": 327
+    },
+    {
+      "file_seq": "3",
+      "path": "v1/hl-public/20261126/hl-public-20261126T02-1795658400000.hlrec.zst",
+      "process_start_wall_ns": "1795647600000000000",
+      "sha256": "64e0cdb89baeee7caec857565ea7633bc2042ace0a608154491c1858f778bdf3",
+      "size_bytes": 277
+    },
+    {
+      "file_seq": "0",
+      "path": "v1/hl-public/20261126/hl-public-20261126T03-1795662000000.hlrec.zst",
+      "process_start_wall_ns": "1795662000000000000",
+      "sha256": "8604bcc4b246b8687d94cc835bac13e7210f9a34c6aa13e51e2cef3fb913bfe2",
+      "size_bytes": 254
+    }
+  ],
+  "gaps": [
+    {
+      "end_wall_ns": "1795658400000000000",
+      "files_withheld": 1,
+      "kind": "withheld",
+      "reason": "partial recording",
+      "start_wall_ns": "1795654800000000000"
+    },
+    {
+      "end_wall_ns": "1795658400000000000",
+      "file_seq": "2",
+      "kind": "missing_sequence",
+      "last_file_seq": "2",
+      "process_start_wall_ns": "1795647600000000000",
+      "start_wall_ns": "1795651203000000000"
+    },
+    {
+      "end_wall_ns": "1795651201000000000",
+      "event": "disconnected",
+      "file_seq": "0",
+      "kind": "disconnect",
+      "process_start_wall_ns": "1795647600000000000",
+      "reason": "other",
+      "start_wall_ns": "1795647602000000000"
+    },
+    {
+      "count": 7,
+      "end_wall_ns": "1795651203000000000",
+      "file_seq": "1",
+      "kind": "dropped",
+      "process_start_wall_ns": "1795647600000000000",
+      "start_wall_ns": null
+    },
+    {
+      "end_wall_ns": "1795662000000000000",
+      "file_seq": "0",
+      "kind": "process_change",
+      "previous_file_seq": "3",
+      "previous_process_start_wall_ns": "1795647600000000000",
+      "process_start_wall_ns": "1795662000000000000",
+      "start_wall_ns": "1795658401000000000"
+    }
+  ],
+  "quality": {
+    "checks": [
+      {
+        "compared": 2,
+        "name": "load_problems",
+        "status": "fail",
+        "subject": "synthetic",
+        "violations": 1
+      },
+      {
+        "compared": 0,
+        "name": "ws_trades_vs_fills",
+        "status": "skip",
+        "subject": "BTC",
+        "violations": 0
+      }
+    ],
+    "complete": true,
+    "day": "2026-11-26",
+    "loader_revision": "synthetic"
+  },
+  "region": "asia-northeast1",
+  "schema_version": 1,
+  "source": "hl-public"
+}

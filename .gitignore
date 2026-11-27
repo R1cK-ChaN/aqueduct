@@ -1,0 +1,47 @@
+# Rust build output
+/target/
+**/*.rs.bk
+
+# Market data, replay caches and other large or licensed files.
+# Raw files are the source of truth but live outside git.
+/data/
+/oxa/
+/fills/
+/replay-cache/
+*.lz4
+*.zst
+*.parquet
+*.arrow
+
+# Output of the probe scripts (written to the current directory)
+perps_rank.json
+hip3_rank.json
+wsprobe_out.json
+
+# Secrets and local environment. Mainnet keys never enter this repository.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.keystore
+/secrets/
+
+# Local ClickHouse state
+/schema/local/data/
+/schema/local/logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

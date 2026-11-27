@@ -1,0 +1,86 @@
+{
+  "coins_covered": {
+    "BTC": [
+      "bbo",
+      "trades"
+    ],
+    "ETH": [
+      "l2"
+    ],
+    "SOL": [
+      "activeAssetCtx"
+    ]
+  },
+  "coverage_ends": [],
+  "dataset_version": "v1",
+  "day": "2026-11-26",
+  "expires": "2027-11-21",
+  "files": [
+    {
+      "file_seq": "0",
+      "path": "v1/hl-public/20261126/hl-public-20261126T00-1795651200000.hlrec.zst",
+      "process_start_wall_ns": "1795651200000000000",
+      "sha256": "50de12533b12aaba8386d5cc8a684740149b3b63f803a4cf8ae0fe0d8cafae0c",
+      "size_bytes": 385
+    },
+    {
+      "file_seq": "1",
+      "path": "v1/hl-public/20261126/hl-public-20261126T01-1795654800000.hlrec.zst",
+      "process_start_wall_ns": "1795651200000000000",
+      "sha256": "4a401ccb60927683791ffe0703c60ccdfd12be6a94e1b76717c2bc947e3d7346",
+      "size_bytes": 382
+    },
+    {
+      "file_seq": "2",
+      "path": "v1/hl-public/20261126/hl-public-20261126T02-1795658400000.hlrec.zst",
+      "process_start_wall_ns": "1795651200000000000",
+      "sha256": "4bd23db449a042656e8adde3a459b9db8b3c080679dcd9d0ba4ef9eb806bac01",
+      "size_bytes": 357
+    }
+  ],
+  "gaps": [],
+  "quality": {
+    "checks": [
+      {
+        "compared": 1,
+        "name": "coverage",
+        "status": "info",
+        "subject": "bbo",
+        "violations": 0
+      },
+      {
+        "compared": 0,
+        "name": "ws_trades_vs_fills",
+        "status": "skip",
+        "subject": "BTC",
+        "violations": 0
+      }
+    ],
+    "complete": true,
+    "day": "2026-11-26",
+    "loader_revision": "synthetic"
+  },
+  "region": "asia-northeast1",
+  "schema_version": 1,
+  "source": "hl-public",
+  "version_change": {
+    "added": [
+      "BTC",
+      "ETH",
+      "SOL",
+      "HYPE",
+      "XRP",
+      "ZEC",
+      "DOGE",
+      "SUI",
+      "AAVE",
+      "NEAR",
+      "TAO",
+      "PUMP",
+      "XPL",
+      "kPEPE"
+    ],
+    "effective_day": "2026-11-26",
+    "removed": []
+  }
+}

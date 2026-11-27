@@ -1,0 +1,11 @@
+[package]
+name = "hl-watchdog"
+description = "Independent process that cancels all orders when the trader stops responding."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
