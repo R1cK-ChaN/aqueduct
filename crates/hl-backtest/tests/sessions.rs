@@ -2,6 +2,8 @@
 
 #[path = "sessions/checkpoints.rs"]
 mod checkpoints;
+#[path = "sessions/cli_rules.rs"]
+mod cli_rules;
 #[path = "sessions/rules.rs"]
 mod rules;
 
@@ -27,6 +29,7 @@ use serde_json::{Value, json};
 
 const INSTRUMENT: InstrumentId = InstrumentId::new(0x619a_6e2d);
 const COMMIT: &str = "1111111111111111111111111111111111111111";
+const TESTNET_URL: &str = "wss://api.hyperliquid-testnet.xyz/ws";
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
 struct Fixture {
@@ -1097,11 +1100,7 @@ fn paper_check_uses_declared_network_for_loopback_headers() {
     let (text, records) = paper_fixture(&fixture);
     check(&fixture.session("paper.jsonl", &text)).expect("complete paper chain");
     // URLs are fixture text only. A paper run uses its declared network.
-    for url in [
-        "ws://127.0.0.1:1234/ws",
-        "ws://[::1]:1234/ws",
-        "wss://api.hyperliquid-testnet.xyz/ws",
-    ] {
+    for url in ["ws://127.0.0.1:1234/ws", "ws://[::1]:1234/ws", TESTNET_URL] {
         let mut records = records.clone();
         for records in &mut records {
             edit_header(&mut records[0], "url", json!(url));

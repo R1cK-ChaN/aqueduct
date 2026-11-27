@@ -64,8 +64,8 @@ time and the last event's local time.
 Stdout contains one JSON summary followed by a newline. Repeating the same
 inputs and arguments produces byte-identical stdout. Stderr reports
 `read_decode_ms` and `replay_ms` on one line. The exit status is 0 for a
-completed run, 1 for a recording, replay or accounting error, and 2 for invalid
-arguments.
+completed run, 1 for a rules file, recording, replay or accounting error,
+and 2 for invalid arguments.
 
 Add `--session-out session.jsonl` to the recording command to keep the
 settings, decisions, fills and final account. The writer seals a new file
@@ -154,6 +154,88 @@ and row count. It also works on a copy left by an interrupted process.
 ```bash
 target/release/hl-backtest run --check-session "paper-runs/<run-directory>/session.jsonl.part"
 ```
+
+## Dated price and size rules
+
+Backtests and paper sessions can read the same local UTF-8 JSON file. Save
+this example as `rules.json`. The coin, times and asset ids are synthetic.
+
+```json
+{
+  "instruments": [
+    {
+      "network": "testnet",
+      "coin": "SYNTH",
+      "versions": [
+        {"effective_from": "100", "sz_decimals": 2, "asset_id": "17"},
+        {"effective_from": "200", "sz_decimals": 3, "asset_id": "21"}
+      ]
+    }
+  ]
+}
+```
+
+Use one history per pair of network (`mainnet` or `testnet`) and exact coin
+name, including any dex prefix. Each array needs at least one entry. Use
+exactly the fields shown and list versions in increasing start-time order.
+
+- Set `effective_from` to the first exchange time covered by the version,
+  using your dated records. Write it as a signed 64-bit decimal string in
+  UTC Unix epoch nanoseconds.
+- Set `sz_decimals` to the version's `szDecimals` from perpetual `meta`, as
+  a JSON integer from 0 through 6. The simulator uses this precision for its
+  size and price checks. [HL-26](venues/hyperliquid.md#hl-26) ·
+  [HL-23](venues/hyperliquid.md#hl-23) · [HL-24](venues/hyperliquid.md#hl-24) ·
+  [HL-25](venues/hyperliquid.md#hl-25)
+- For `asset_id`, use the main-dex index in `meta` or the builder-dex
+  calculation for the selected market, encoded as an unsigned 64-bit
+  decimal string. [HL-53](venues/hyperliquid.md#hl-53) ·
+  [HL-54](venues/hyperliquid.md#hl-54)
+
+Write integer strings with unpadded decimal digits and a minus sign only for
+negative starts. To replay a recording of the example instrument, pass
+`--rules-file` once. A relative path starts at the working directory.
+
+```bash
+target/release/hl-backtest run --network testnet --coin SYNTH \
+  --half-spread 1 --qty 1.001 --order-latency-ms 0 --report-latency-ms 0 \
+  --maker-fee-bps 0 --rules-file rules.json --session-out session.jsonl \
+  recording.hlrec.zst
+```
+
+For paper, copy `crates/hl-live/example.toml` to `paper.toml` beside
+`rules.json`. Set these top-level keys before `[source]`. Set the source URL
+to a feed for the selected market and its `symbols` to `["SYNTH"]`.
+
+```toml
+network = "testnet"
+coin = "SYNTH"
+rules_file = "rules.json"
+```
+
+Paper resolves a relative `rules_file` from the config file's directory.
+Both drivers also accept absolute paths. The first command below checks
+both files before the second opens the feed.
+
+```bash
+target/release/hl-live check --config paper.toml
+target/release/hl-live paper --config paper.toml
+```
+
+Each driver reads the file once at startup and selects the run's network
+and coin. An unreadable or invalid file, or a missing pair, stops the run
+before backtest opens a recording or paper creates a run directory or
+connects. A new or modified order that fails the rules at its effect time
+gets an `invalid_order` rejection. An effect time before the first version
+stops the run.
+
+With a file, the backtest summary includes the selected `rules` array
+immediately after `min_notional`, even without `--session-out`. Both drivers
+write the same array in the version 2 session's `start` row.
+`--check-session` uses those embedded versions after the rules file is
+deleted, for both sealed sessions and open paper checkpoints.
+Without a file, each driver prints `no grid check applied` once on stderr,
+sessions use version 1 and the backtest summary omits `rules`.
 
 ## Layout
 

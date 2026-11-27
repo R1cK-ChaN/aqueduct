@@ -357,10 +357,12 @@ fn summary(output: &Output) -> Value {
         output.stdout.iter().filter(|&&byte| byte == b'\n').count(),
         1
     );
-    assert_eq!(
-        output.stderr.iter().filter(|&&byte| byte == b'\n').count(),
-        1
-    );
+    let timing = output
+        .stderr
+        .strip_prefix(b"hl-backtest: no grid check applied\n")
+        .expect("the CLI reports when it runs without rules");
+    assert!(timing.starts_with(b"read_decode_ms="));
+    assert_eq!(timing.iter().filter(|&&byte| byte == b'\n').count(), 1);
     serde_json::from_slice(&output.stdout).expect("one JSON summary")
 }
 

@@ -1,10 +1,13 @@
 //! One paper strategy, simulator and recorder source.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
 
-use hl_codec::hyperliquid::{Network, instrument_id};
+use hl_codec::hyperliquid::{Network, SelectedRules, instrument_id};
 use hl_recorder::{Config as RecorderConfig, SourceConfig};
+use hl_run::select_rules;
 use hl_sim::SimConfig;
 use hl_strategy::FixedSpreadConfig;
 use hl_types::{MarketEvent, MarketEventKind};
@@ -16,6 +19,7 @@ pub struct PaperConfig {
     pub(crate) out_dir: PathBuf,
     pub(crate) network: Network,
     pub(crate) coin: String,
+    rules_file: Option<PathBuf>,
     pub(crate) queue_capacity: usize,
     pub(crate) zstd_level: i32,
     pub(crate) source: SourceConfig,
@@ -27,6 +31,7 @@ pub struct PaperConfig {
 struct Settings {
     network: String,
     coin: String,
+    rules_file: Option<PathBuf>,
     strategy_name: String,
     strategy: BTreeMap<String, String>,
     sim: BTreeMap<String, String>,
@@ -35,6 +40,26 @@ struct Settings {
 }
 
 impl PaperConfig {
+    /// Reads the paper settings and resolves a relative rules path beside the TOML file.
+    pub fn from_file(path: &Path) -> io::Result<Self> {
+        let mut config = Self::from_toml(&fs::read_to_string(path)?).map_err(io::Error::other)?;
+        if let (Some(directory), Some(rules)) = (path.parent(), &mut config.rules_file) {
+            *rules = directory.join(&*rules);
+        }
+        Ok(config)
+    }
+
+    /// Loads the configured rules for this run's exact network and coin.
+    pub fn load_rules(&self) -> Result<Option<SelectedRules>, String> {
+        self.rules_file
+            .as_deref()
+            .map(|path| {
+                let text = fs::read_to_string(path);
+                select_rules(path, text, self.network, &self.coin)
+            })
+            .transpose()
+    }
+
     /// Apply the offline quoter and report range checks as each input arrives.
     pub(crate) fn validate_event(&self, event: &MarketEvent) -> Result<(), &'static str> {
         let latency = (self.sim.order_latency + self.sim.report_latency).as_nanos();
@@ -58,6 +83,7 @@ impl PaperConfig {
         let Settings {
             network,
             coin,
+            rules_file,
             strategy_name,
             strategy,
             sim,
@@ -90,6 +116,7 @@ impl PaperConfig {
             out_dir: capture.out_dir,
             network,
             coin,
+            rules_file,
             queue_capacity: capture.queue_capacity,
             zstd_level: capture.zstd_level,
             source: capture.sources.remove(0),

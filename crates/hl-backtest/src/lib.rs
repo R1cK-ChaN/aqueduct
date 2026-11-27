@@ -39,7 +39,7 @@ pub fn replay_session<S: Strategy>(
         stop,
         &mut session,
     )
-    .map_err(|error| error.to_string())?;
+    .map_err(|error| error.for_pair(start.network, &start.coin))?;
     let end = session_end(recording, start, manifest, host.orders().len(), &trace)?;
     let pnl = end.pnl;
     session.finish(&end);

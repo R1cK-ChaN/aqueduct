@@ -67,7 +67,7 @@ cargo run --release -p hl-backtest -- run --check-session /tmp/session.jsonl
 | 模拟交易所 | `hl-sim` | 可用，功能最小：只接受被动挂单，成交价严格穿过挂单价才算成交 |
 | 回放和回测 | `hl-run`、`hl-backtest` | 可用，每次运行一个币种 |
 | 模拟盘 | `hl-live` | 可用 |
-| 按日期生效的价格和数量规则 | `hl-rules` | 已写好，模拟器还没用上。[RFC 0009 D7](docs/rfc/0009-instrument-identity.md#d7-supply-dated-rules-to-backtest-and-paper-runs) |
+| 按日期生效的价格和数量规则 | `hl-rules` | 回测和模拟盘都可读取规则文件，在新单或改单生效时检查价格和数量。[使用说明](docs/usage.md#dated-price-and-size-rules) · [RFC 0009 D7](docs/rfc/0009-instrument-identity.md#d7-supply-dated-rules-to-backtest-and-paper-runs) |
 | 公开的录制数据集 | `hl-publish` | 已设计，还没有提供。[RFC 0010 D8](docs/rfc/0010-public-recording-dataset.md#d8-order-of-later-issues) |
 | 实盘下单网关 | `hl-gateway` | 只有接口 |
 | 风控和看门狗 | `hl-risk`、`hl-watchdog` | 还没开始 |
@@ -94,7 +94,6 @@ cargo run --release -p hl-backtest -- run --check-session /tmp/session.jsonl
 ## 路线图
 
 - 下一个交易所是 Lighter。crate 名带 `hl-`，是因为当初只为一个交易所而写。接第二个的时候会改名。
-- 让模拟器用上按日期生效的价格和数量规则。
 - 公开的录制数据集。
 - `learn/` 目录：做市者在做什么，回测会在哪些地方误导人。
 
