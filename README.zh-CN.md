@@ -94,7 +94,6 @@ cargo run --release -p hl-backtest -- run --check-session /tmp/session.jsonl
 ## 路线图
 
 - 下一个交易所是 Lighter。crate 名带 `hl-`，是因为当初只为一个交易所而写。接第二个的时候会改名。
-- 从已保存的永续合约 `meta` 响应导入规则，由使用者指定生效时间。
 - 公开的录制数据集。
 - `learn/` 目录：做市者在做什么，回测会在哪些地方误导人。
 

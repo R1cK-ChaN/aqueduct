@@ -121,7 +121,6 @@ can check its own result. The working rules for both are in
 
 - Lighter is the next venue. Crates are named `hl-` because they were
   written for one venue. They get new names when the second one arrives.
-- Import rules from a saved perpetual `meta` response with a supplied start time.
 - A public dataset of recordings.
 - A `learn/` directory: what a maker does, and the ways a backtest misleads.
 

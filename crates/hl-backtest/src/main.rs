@@ -7,6 +7,7 @@ mod summary;
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fmt::Display;
+use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -18,7 +19,7 @@ use hl_backtest::session::{ReplayComponents, check_session};
 use hl_backtest::{build_identity, replay_session};
 use hl_codec::hyperliquid::{Network, instrument_id};
 use hl_run::session::SessionStart;
-use hl_run::{load_rules_file, replay};
+use hl_run::{replay, select_rules};
 use hl_sim::{MODEL_NAME, SimConfig, SimGateway};
 use hl_strategy::{FixedSpreadConfig, FixedSpreadQuoter, StrategyHost};
 use hl_types::{MarketEventKind, Px, Qty};
@@ -233,7 +234,8 @@ fn run(mut command: Command<'_>) -> Result<(), Box<dyn std::error::Error>> {
     }
     let (mut sim, rules) = match &command.rules_file {
         Some(path) => {
-            let selected = load_rules_file(path, command.network, command.coin)?;
+            let text = fs::read_to_string(path);
+            let selected = select_rules(path, text, command.network, command.coin)?;
             command.summary.append_rules(&selected.versions);
             (
                 SimGateway::with_rules(command.sim, selected.book),

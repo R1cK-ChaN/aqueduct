@@ -42,13 +42,18 @@ pub mod pnl;
 pub mod recording;
 pub mod session;
 
-/// Reads a local rules file at startup and selects the run's exact network and coin.
-pub fn load_rules_file(path: &Path, network: Network, coin: &str) -> Result<SelectedRules, String> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|error| format!("rules file {}: {error}", path.display()))?;
+/// Selects rules from the text read by the driver and names the file on error.
+pub fn select_rules(
+    path: &Path,
+    text: std::io::Result<String>,
+    network: Network,
+    coin: &str,
+) -> Result<SelectedRules, String> {
+    let with_path = |cause: &dyn fmt::Display| format!("rules file {}: {cause}", path.display());
+    let text = text.map_err(|error| with_path(&error))?;
     parse_rules_file(&text)
         .and_then(|file| file.select(network, coin))
-        .map_err(|error| format!("rules file {}: {error}", path.display()))
+        .map_err(|error| with_path(&error))
 }
 
 /// Why the driver could not process an input or close a timestamp. `index`

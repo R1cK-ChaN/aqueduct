@@ -42,7 +42,7 @@ to the last event's local time if necessary. [RFC 0008 D4 and D5](rfc/0008-paper
 | `hl-strategy` | `Strategy` trait; `StrategyHost`, which owns the state a strategy reads; the example `FixedSpreadQuoter`. | Implemented |
 | `hl-gateway` | `OrderGateway` trait. The Hyperliquid client will be added behind a non-default feature. | Trait only |
 | `hl-sim` | Applies post-only actions proved by received market data, matches strict trade-throughs and schedules reports. With a rule book, it checks the price and size of each new or modified order at its effect time. A failed lookup stops the run. [RFC 0009 D7](rfc/0009-instrument-identity.md#check-a-placement-or-modification-at-its-effect-time) | Minimal |
-| `hl-run` | Uses `hl-codec` to convert BBOs and trades for one coin, applies the trade cutoff and delivery clock, encodes session rows for actions, reports, gaps and timers, and computes the account at the stop. Both drivers use its rules file loader at startup and record the selected history in the session. | Incremental driver, session encoding and accounting |
+| `hl-run` | Uses `hl-codec` to convert BBOs and trades for one coin, applies the trade cutoff and delivery clock, encodes session rows for actions, reports, gaps and timers, and computes the account at the stop. Backtest and paper each read the optional rules file at startup. From that text, `hl-run` selects the rules for the run's network and coin and records them in the session start. Performs no IO and reads no clock. | Incremental driver, session encoding and accounting |
 | `hl-backtest` | Reads and orders compressed recordings and writes the JSON summary and session file. The checker validates the embedded rule history, verifies the raw input hashes, rebuilds the simulator with the recorded rules and compares an independent replay field by field. | Recording CLI and replay-check library |
 | `hl-codec` | `rawlog` frames recordings, parses `file_open` headers and identifies recording chains. `hyperliquid` owns the live-trade cutoff shared by loading and replay, network names, recording URL mapping, coin ids and dex extraction. It decodes WebSocket book and trade channels, the official L2 archive and `node_fills_by_block` into typed records. A caller-supplied coin resolver selects the records to convert to market events. For dated perpetual rules, `hyperliquid` parses JSON text into `hl-rules` histories and returns the instrument id, ordered versions and a `RuleBook` for the selected network and coin. [RFC 0009 D7](rfc/0009-instrument-identity.md#rules-file) | Partial. Context channels and Binance are planned. |
 | `hl-book` | `L2Book`: the visible levels of one instrument, built from snapshots and diffs. An L4 book is planned. | L2 only |
@@ -82,8 +82,8 @@ hl-types, hl-codec, hl-book  <-  hl-loader
   signing dependencies through it.
 - `hl-run` uses `hl-codec` to convert one record at a time, drives the
   simulator and strategy, and uses `hl-ledger` for its typed accounting
-  result. Replay performs no IO and reads no clock. The crate's only direct
-  external dependency is the workspace's existing `serde_json` for record metadata.
+  result. It performs no IO and reads no clock. Its only direct external
+  dependency is the workspace's existing `serde_json` for record metadata.
   The incremental driver accepts one input or a time cutoff per call.
   Recording replay feeds it the selected coin's event slice.
 - `hl-backtest` owns recording file IO, decompression, header reading, file ordering

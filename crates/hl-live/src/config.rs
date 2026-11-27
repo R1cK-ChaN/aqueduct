@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use hl_codec::hyperliquid::{Network, SelectedRules, instrument_id};
 use hl_recorder::{Config as RecorderConfig, SourceConfig};
-use hl_run::load_rules_file;
+use hl_run::select_rules;
 use hl_sim::SimConfig;
 use hl_strategy::FixedSpreadConfig;
 use hl_types::{MarketEvent, MarketEventKind};
@@ -53,7 +53,10 @@ impl PaperConfig {
     pub fn load_rules(&self) -> Result<Option<SelectedRules>, String> {
         self.rules_file
             .as_deref()
-            .map(|path| load_rules_file(path, self.network, &self.coin))
+            .map(|path| {
+                let text = fs::read_to_string(path);
+                select_rules(path, text, self.network, &self.coin)
+            })
             .transpose()
     }
 
