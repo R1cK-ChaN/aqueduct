@@ -103,6 +103,7 @@ fn run_and_check_fixture(test: &str, variable: &str) -> Vec<Value> {
             sim: SimGateway::new(config),
             strategy_parameters: Vec::new(),
             sim_parameters: config.parameters(),
+            rules: Vec::new(),
         })
     })
     .expect("actual checker reproduces the live session");

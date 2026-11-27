@@ -11,13 +11,11 @@ publish.workspace = true
 hl-codec.workspace = true
 hl-gateway.workspace = true
 hl-ledger.workspace = true
+hl-rules.workspace = true
 hl-sim.workspace = true
 hl-strategy.workspace = true
 hl-types.workspace = true
 serde_json.workspace = true
-
-[dev-dependencies]
-hl-rules.workspace = true
 
 [lints]
 workspace = true

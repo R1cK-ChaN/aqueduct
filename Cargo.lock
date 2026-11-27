@@ -346,6 +346,7 @@ name = "hl-backtest"
 version = "0.1.0"
 dependencies = [
  "hl-codec",
+ "hl-rules",
  "hl-run",
  "hl-sim",
  "hl-strategy",

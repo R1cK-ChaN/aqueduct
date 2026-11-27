@@ -365,16 +365,16 @@ cannot know which versions later orders will use. A path or hash alone
 cannot rebuild the list if the file disappears. Use the network, coin and
 instrument already in `start`.
 
-Today `Session::new` writes `schema_version` 1 and `sim.model` followed by
-`SessionStart.sim`'s ordered string pairs. `SimConfig::parameters` writes
+`Session::new` writes `sim.model` followed by `SessionStart.sim`'s
+ordered string pairs. `SimConfig::parameters` writes
 `order_latency`, `report_latency`, `maker_fee` and `min_order_notional` as
 `order_latency_ns`, `report_latency_ns`, `maker_fee_bps` and
 `min_order_notional_usd`, respectively. Both the backtest CLI and
 `PaperConfig::from_toml` use `SimConfig::from_parameters`, which accepts
-exactly those four names. On `--check-session`, `parse_start` accepts
-only v1. After checking the raw hashes, `components` rebuilds the simulator
-from the recorded parameters. The checker compares the regenerated start
-in canonical bytes and replays the decisions. [Session format][session-file] ·
+exactly those four names. After checking the raw hashes, `--check-session`
+rebuilds the simulator from the recorded parameters and any embedded versions.
+The checker compares the regenerated start in canonical bytes and replays
+the decisions. [Session format][session-file] ·
 [Session writer][session-writer] · [Checker][checker] · [Backtest CLI][backtest-cli]
 
 | Consequence | (a) Additional string parameters in `sim` | (b) A separate `start.rules` field |
@@ -407,7 +407,7 @@ built at a different commit stops before replay.
 | --- | --- | --- |
 | 1. Read dated histories (implemented) | `hl-codec` validates the rules file with `hl-rules` and returns the selected pair's instrument id, ordered versions and `RuleBook`. | No special review. |
 | 2. Check orders on proof (implemented) | `hl-sim` applies the checks and returns `InvalidOrder` for an off-grid price or an over-precise size. `hl-run` propagates a coverage error. | Yes (`hl-sim`). |
-| 3. Record and rebuild the history | `hl-run` writes schema version 2 with `start.rules` and `hl-backtest` rebuilds the history from it. Keep the v1 layout for runs without rules. Update the paper start in `hl-live` as needed and document both versions in `docs/session-file.md`. | No special review. Both `hl-sim` parameter functions stay as written. |
+| 3. Record and rebuild the history (implemented) | `hl-run` writes schema version 2 with `start.rules` and `hl-backtest` rebuilds the history from it. Runs without rules, including paper, use the v1 layout. [Session format][session-file] | No special review. Both `hl-sim` parameter functions stay as written. |
 | 4. Accept the file in both drivers | `hl-backtest` and `hl-live` expose the CLI and config inputs, the no-check diagnostic and the end-to-end replay tests. | No special review. |
 | 5. Import a saved `meta` response | The offline importer in `hl-codec` first needs a register entry for the `meta` response layout and how it names builder-dex coins. [Hyperliquid venue register](../venues/hyperliquid.md) | No special review. |
 

@@ -2,6 +2,8 @@
 
 #[path = "sessions/checkpoints.rs"]
 mod checkpoints;
+#[path = "sessions/rules.rs"]
+mod rules;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -303,6 +305,7 @@ fn start() -> SessionStart {
         strategy: vec![("bid_px".to_owned(), "99".to_owned())],
         sim_model: "strict_trade_through".to_owned(),
         sim: sim_config().parameters(),
+        rules: Vec::new(),
     }
 }
 
@@ -326,6 +329,7 @@ fn components(
         sim: SimGateway::new(config),
         strategy_parameters: vec![("bid_px".to_owned(), price.to_string())],
         sim_parameters: config.parameters(),
+        rules: Vec::new(),
     })
 }
 

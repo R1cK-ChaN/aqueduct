@@ -346,6 +346,7 @@ mod tests {
             strategy: vec![],
             sim_model: hl_sim::MODEL_NAME.into(),
             sim: sim_config.parameters(),
+            rules: Vec::new(),
         };
         let temp = std::env::temp_dir().join(format!("hl-live-rotation-{}", std::process::id()));
         let dir = create_directory(&temp, 0).expect("new session directory");

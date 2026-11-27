@@ -1,6 +1,6 @@
 # Session file reference
 
-Schema version 1 records one strategy run under RFC 0008 D6 and D8. `hl-run`
+A session records one strategy run under RFC 0008 D6 and D8. `hl-run`
 encodes the rows while its driver processes callbacks, actions, reports and
 timers. Each driver supplies its build identity and raw manifest. `hl-backtest`
 checks a sealed session or the latest midnight checkpoint of an open paper
@@ -37,7 +37,7 @@ reports and timers follow RFC 0008 D3.
 | Field in order | Type and meaning |
 | --- | --- |
 | `kind` | Text `"start"`. |
-| `schema_version` | JSON integer `1`. |
+| `schema_version` | JSON integer `1` for a run without dated rules or `2` for a run with dated rules. |
 | `commit` | Full Git commit hash of the build, or `"unknown"` when Git is unavailable. |
 | `dirty` | Boolean indicating whether any tracked file differed from that commit when built. Git being unavailable sets this to `true`. |
 | `driver` | Text `"backtest"` or `"paper"`. |
@@ -50,6 +50,29 @@ reports and timers follow RFC 0008 D3.
 | `strategy_tag` | Identifier in the range 0 through 255, used when constructing client order IDs. |
 | `strategy` | Object containing the component's ordered parameter pairs. Every value is a string. |
 | `sim` | Object starting with text field `model`, followed by the simulator's ordered parameter pairs. Every value is a string. |
+| `rules` | Version 2 only. Nonempty array containing the complete rule history for `instrument`, in strictly increasing start-time order. |
+
+Version 1 ends at `sim`. The backtest CLI and the paper driver currently
+write this layout. When a run uses dated rules, the writer places `rules`
+immediately after `sim` and writes version 2. Both layouts use the same four
+simulator parameters and the same work and boundary rows.
+
+Each version object contains exactly these three fields in order.
+
+| Field in order | Type and meaning |
+| --- | --- |
+| `effective_from` | Signed 64-bit decimal string. The version applies from this exchange time in Unix epoch nanoseconds, inclusive. |
+| `sz_decimals` | JSON integer from 0 through 6 for size precision. |
+| `asset_id` | Unsigned 64-bit decimal string identifying the asset for this version. |
+
+Integer strings use ASCII digits. Zero is `"0"`. A minus sign occurs only
+on negative values. Leading zeros, plus signs, fractions, exponents and
+whitespace are invalid. This row records two versions for a synthetic
+instrument. [RFC 0009 D7](rfc/0009-instrument-identity.md#record-the-versions-in-the-session)
+
+```json
+{"kind":"start","schema_version":2,"commit":"1111111111111111111111111111111111111111","dirty":false,"driver":"backtest","network":"testnet","source":null,"coin":"SYNTH","instrument":"3509668803","process_start_wall_ns":null,"strategy_name":"fixed_spread","strategy_tag":"1","strategy":{"half_spread_quote_per_base":"1","qty_base":"1.001"},"sim":{"model":"strict_trade_through","order_latency_ns":"0","report_latency_ns":"0","maker_fee_bps":"0","min_order_notional_usd":"0"},"rules":[{"effective_from":"100","sz_decimals":2,"asset_id":"17"},{"effective_from":"200","sz_decimals":3,"asset_id":"21"}]}
+```
 
 The component parameter functions define the contents and order of `strategy`
 and the parameter fields after `sim.model`. They list every setting, including
@@ -261,11 +284,22 @@ binary's full commit and dirty flag to match the session. A mismatch reports
 both identities. Equal dirty flags permit a check and produce a warning that
 they do not prove equal code.
 
-The checker resolves the manifest and verifies every raw-file SHA-256 before
-constructing the strategy and simulator. It then replays the raw files with
-the recorded parameters through the inclusive stop. The strategy produces
-new actions and the simulator produces new reports. The checker compares
-every regenerated field, including extra or missing fields and rows, exact
+The reader checks the schema version and the presence of `rules` together.
+For version 2 it validates every version's fields, order and values, then
+checks that the history is nonempty and its starts strictly increase. The
+checker resolves the manifest and verifies every raw-file SHA-256 before
+constructing the strategy and simulator. The factory installs the embedded
+history under `start.instrument` for version 2 and builds a simulator
+without grid checks for version 1. The checker regenerates `start` from
+the factory's canonical parameters and installed versions, and compares
+it with the recorded row before replaying any decisions.
+
+During replay with rules, the simulator looks up each placement or modification
+at its effect time. If that time precedes the first version, the check fails
+with the instrument, effect time and first start.
+For a sealed session, replay runs through the inclusive stop. The strategy
+produces new actions and the simulator produces new reports. The checker
+compares every regenerated field, including extra or missing fields and rows, exact
 decimal strings, accounting, raw positions and outstanding work. It reports
 the first differing `seq`, or `start` or `end`, with the field, expected value
 and replayed value. A match prints one line and exits 0. A failed check exits 1.
